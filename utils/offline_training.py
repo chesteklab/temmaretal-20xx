@@ -1,11 +1,11 @@
 import numpy as np
-
+import pdb
 import torch
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
-from utils import offline_metrics
+from utils import offline_metrics, nn_decoders
 import config
-
+import yaml
 
 def rrTrain(X, y, lbda=0.0):
     '''
@@ -129,7 +129,6 @@ def dsTrain(X, y, vel_idx=None, post_prob=0.5, alpha=0.01, lbda=4, initK=None, i
          'initMoveProb': initMoveProb, 'postprob': post_prob}
     return p
 
-
 def dsPredict(X, p):
     '''
     Generates dual-state decoder predictions using pretrained matrices.
@@ -173,183 +172,245 @@ def dsPredict(X, p):
     yhat = pmh * movepred + (1 - pmh) * postpred
     return yhat, pmh
 
+# initialize an NN model based on architecture and config
+def init_model(model_class, model_type, in_size, out_size):
+    with open(config.architectures_path) as f:
+        model_params = yaml.load(f, Loader=yaml.FullLoader)[model_type]
+    
+    if model_type == 'TCN':
+        model = model_class(in_size,
+                            model_params['layer_size'],
+                            model_params['conv_size'],
+                            model_params['conv_size_out'],
+                            out_size).to(config.device)
+    elif model_type == 'LSTM_xnorm_ynorm':
+        model = model_class(in_size,
+                            model_params['hidden_size'],
+                            out_size,
+                            model_params['num_layers'],
+                            rnn_type=model_params['rnn_type'],
+                            drop_prob = model_params['drop_prob'],
+                            dropout_input=0).to(config.device)
+    return model
+
+# initialize an optimizer and potentially a learning rate scheduler
+def init_opt(model, model_type):
+    with open(config.training_params_path) as f:
+        training_params = yaml.load(f, Loader=yaml.FullLoader)[model_type]
+
+    opt = torch.optim.Adam(model.parameters(), 
+                           lr=float(training_params['learning_rate']),
+                           weight_decay=float(training_params['weight_decay']))
+    
+    if training_params['use_scheduler']:
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode='min', factor=0.5,
+                                                               patience=training_params['scheduler_patience'])
+    else:
+        scheduler = None
+    
+    return opt, scheduler
+    
+    # TODO deal with training parameters
+
+def train_nn(train_neu, train_vel, model_class, model_type):
+    #turn training data into tensors and move to gpu if needed
+    neu = torch.from_numpy(train_neu)
+    vel = torch.from_numpy(train_vel)
+
+    #create pytorch datasets and then dataloaders
+    ds = TensorDataset(neu, vel)
+
+    #since we know how long we're training, val dataset can just be the same as training
+    dl = DataLoader(ds, batch_size=config.batch_size, shuffle=True, drop_last=True)
+    dl2 = DataLoader(ds, batch_size=len(ds), shuffle=False, drop_last=True)
+
+    in_size = neu.shape[1]
+    out_size = vel.shape[1]
+
+    model = init_model(model_class, model_type, in_size, out_size)
+    opt, scheduler = init_opt(model, model_type)
+
+    #TODO 
 
 # Basic Fit Function for forward/backprop dependent models
-def fit(epochs, model, opt, dl, val_dl, print_every=1, print_results=False, scaler_used=True):
-    best_epoch = 0
+def fit(model, model_type, opt, scheduler, dl, val_dl, scaler_used=True):
     loss_fn = torch.nn.MSELoss()
-    loss_history = []
-    vloss_history = []
-    itertotal = 0
-    for epoch in range(epochs):
-        loss_list = []
+    train_losses = []
+    val_losses = []
+    loss_iters = []
+    
+    with open(config.training_params_path) as f:
+        training_params = yaml.load(f, Loader=yaml.FullLoader)[model_type]
+    
+    if training_params['use_scheduler'] == True:
+        scheduler_update = training_params['scheduler_update']
+        min_lr = float(training_params['learning_rate'])/training_params['num_lr_steps']
+
+    iter = 0
+    for epoch in range(training_params['max_epoch']):
+        epoch_train_losses = []
         for x, y in dl:
             model.train()
+
+            # add noise if needed
+            if training_params['noise_std'] or training_params['bias_std']:
+                x = add_training_noise(x, training_params['noise_std'], training_params['bias_std'])
+
+            # reset gradients
+            opt.zero_grad()
+
             # 1. Generate your predictions
             yh = model(x)
 
+            if isinstance(yh, tuple):
+                # RNNs return y, h
+                yh = yh[0]
+            
             # 2. Find Loss
             loss = loss_fn(yh, y)
-            loss_list.append(loss.item())
+            epoch_train_losses.append(loss.item())
             # 3. Calculate gradients with respect to weights/biases
             loss.backward()
 
             # 4. Adjust your weights
             opt.step()
 
-            # 5. Reset the gradients to zero
-            opt.zero_grad()
-            itertotal = itertotal + 1
-        # Occasional progress update
-        if print_results and ((epoch % print_every == 0) or (epoch == epochs - 1)):
-            for x2, y2 in val_dl:
-                with torch.no_grad():
-                    model.eval()
-                    if scaler_used:
-                        scale_ds = BasicDataset(x2, y2)
-                        scale_dl = DataLoader(scale_ds, batch_size=len(scale_ds))
-                        scaler = generate_output_scaler(model, scale_dl, num_outputs=y2.shape[1], verbose=False)
-                        yh = scaler.scale(model(x2))
-                    else:
-                        yh = model(x2)
+            # scheduler is based on 100 iter increments
+            if training_params['use_scheduler'] and ((iter % scheduler_update == 0)):
+                val_loss = evaluate_model_acc(model, 
+                                              loss_fn, 
+                                              val_dl, 
+                                              epoch,
+                                              iter, 
+                                              training_params['max_epoch'],
+                                              scaler_used=scaler_used,
+                                              verbose=False)
 
-                    val_loss = loss_fn(yh.cpu(), y2.cpu())
-                    # val_cc = offline_metrics.corrcoef(yh.cpu(), y2.cpu())
+                if scheduler is not None:
+                    scheduler.step(val_loss)
+                    print('steppin')
+                
+                print(opt.param_groups[0]['lr'])
+                if opt.param_groups[0]['lr'] < float(min_lr):
+                    print(f'scheduler stop, final result:')
+                    print('Epoch [{}/{}], iter {} Validation Loss: {:.4f}'.format(epoch, 
+                                                                                  training_params['max_epoch'] - 1, 
+                                                                                  iter,
+                                                                                  val_loss.item()))
+                    val_losses.append(val_loss.item())
+                    train_loss = np.mean(np.asarray(epoch_train_losses))
+                    train_losses.append(train_loss)
+                    loss_iters.append(iter)
+                    return val_losses, train_losses, loss_iters
 
-                    print('Epoch [{}/{}], iter {} Loss: {:.4f}, Validation Loss: {:.4f}'.format(epoch, epochs - 1,
-                                                                                                itertotal, loss.item(),
-                                                                                                val_loss.item()))
-                    # print('Validation Correlation: {:.4f}, {:.4f}'.format(val_cc[0], val_cc[1]))
-                    train_loss = np.mean(np.asarray(loss_list))
-                    loss_history.append(train_loss)
-                    vloss_history.append(val_loss.item())
-    return loss_history, vloss_history
+            iter = iter + 1
 
+        # Per-epoch eval
+        val_loss = evaluate_model_acc(model, loss_fn, val_dl, epoch, iter - 1, training_params['max_epoch'], scaler_used=scaler_used, verbose=True)
+        train_loss = np.mean(np.asarray(epoch_train_losses))
+        train_losses.append(train_loss)
+        val_losses.append(val_loss.item())
+        loss_iters.append(iter - 1)
+    
+    return val_losses, train_losses, loss_iters
 
-class BasicDataset(Dataset):
-    '''
-    Torch Dataset if your neural and behavioral data are already all set-up with history, etc. Just sets up the
-    chans_states attributes and returning the sample as a dict of 'chans' and 'states'.
-    '''
+def evaluate_model_acc(model, loss_fn, val_dl, epoch, iter, max_epoch, scaler_used=True, verbose=True):
+    for x2, y2 in val_dl:
+        with torch.no_grad():
+            model.eval()
 
-    def __init__(self, chans, states):
-        self.chans_states = (chans, states)
+            yh = model(x2)
+            if isinstance(yh, tuple):
+                # RNNs return y, h
+                yh = yh[0]
+            
+            if scaler_used:
+                scaler = generate_output_scaler(model, val_dl, num_outputs=y2.shape[1], verbose=False)
+                yh = scaler.scale(yh)
 
-    def __len__(self):
-        return len(self.chans_states[0])
+            val_loss = loss_fn(yh.cpu(), y2.cpu())
+                
+        if verbose:
+            print('Epoch [{}/{}], iter {} Validation Loss: {:.4f}'.format(epoch, 
+                                                                          max_epoch - 1, 
+                                                                          iter,
+                                                                          val_loss.item()))
+    return val_loss
 
-    def __getitem__(self, idx):
-        if torch.is_tensor(idx):
-            idx = idx.tolist()
-        chans = self.chans_states[0][idx, :]
-        states = self.chans_states[1][idx, :]
-
-        sample = {'states': states, 'chans': chans}
-        return sample
-
-
-def generate_output_scaler(model, loader, num_outputs=2, verbose=True, is_refit=False, refit_orig_scaler=None):
+def generate_output_scaler(model, loader, num_outputs=2, verbose=True):
     """Returns a scaler object that scales the output of a decoder
 
     Args:
         model:      model
         loader:     dataloader
         num_outputs:  how many outputs (2)
-        is_refit:   if this is for a refit model
-        refit_orig_scaler:  if refit, this is the scaler used in the refit training run.
 
     Returns:
         scaler: An OutputScaler object that takes returns scaled version of input data. If refit, this is the
                 composition of the original and new scalers.
     """
-
-    gains = None
-    biases = None
-
     # fit constants using regression
-    theta = calcGainRR(loader, model, idpt=True, verbose=verbose)
-    # theta = [[w_x,   0]
-    #          [0,   w_y]
-    #          [b_x, b_y]]
+    model.eval()  # set model to evaluation mode
+    batches = len(list(loader))
+    with torch.no_grad():
+        for x, y in loader:
+
+            x = x.to(device=config.device, dtype=config.dtype)  # move to device, e.g. GPU
+            y = y.to(device=config.device, dtype=config.dtype)
+            yhat = model(x)
+
+            if isinstance(yhat, tuple):
+                # RNNs return y, h
+                yhat = yhat[0]
+
+            num_samps = yhat.shape[0]
+            num_outputs = yhat.shape[1]
+            yh_temp = torch.cat((yhat, torch.ones([num_samps, 1]).to(config.device)), dim=1)
+
+            # train ~special~ theta
+            # (scaled velocities are indpendent of each other - this is the typical method)
+            # Theta has the following form: [[w_x,   0]
+            #                                [0,   w_y]
+            #                                [b_x, b_y]]
+            theta = torch.zeros((num_outputs + 1, num_outputs)).to(device=config.device, dtype=config.dtype)
+            for i in range(num_outputs):
+                yhi = yh_temp[:, (i, -1)]
+                thetai = torch.matmul(torch.mm(torch.pinverse(torch.mm(torch.t(yhi), yhi)), torch.t(yhi)), y[:, i])
+                theta[i, i] = thetai[0]  # gain
+                theta[-1, i] = thetai[1]  # bias
+                if verbose:
+                    print("Finger %d RR Calculated Gain, Offset: %.6f, %.6f" % (i, thetai[0], thetai[1]))
+
     gains = np.zeros((1, num_outputs))
     biases = np.zeros((1, num_outputs))
     for i in range(num_outputs):
         gains[0, i] = theta[i, i]
         biases[0, i] = theta[num_outputs, i]
 
-    # For refit, we apply both the old and new scalers:     y = m1*(m2x+b2) + b1
-    if is_refit:
-        gains = refit_orig_scaler.gains * gains
-        biases = (refit_orig_scaler.gains * biases) + refit_orig_scaler.biases
-
     return OutputScaler(gains, biases)
 
+def add_training_noise(x, bias_std, noise_std):
+    if bias_std:
+        # bias is constant across time (i.e. the 3 conv inputs), but different for each channel & batch
+        # biases = torch.normal(0, bias_std, x.shape[:2]).unsqueeze(2).repeat(1, 1, x.shape[2])
+        biases = torch.normal(torch.zeros(x.shape[:2]), bias_std).unsqueeze(2).repeat(1, 1, x.shape[2])
+        x = x + biases.to(device=config.device)
 
-def calcGainRR(loader, model, idpt=True, subtract_median=False, verbose=True):
-    model.eval()  # set model to evaluation mode
-    batches = len(list(loader))
-    with torch.no_grad():
-        for k1 in range(batches):  # TODO: handle multiple batches in loader
-            temp = list(loader)
-            x = temp[k1]['chans']
-            # x = x[:, :, 0:ConvSize]
-            y = temp[k1]['states']
-            x = x.to(device=config.device, dtype=config.dtype)  # move to device, e.g. GPU
-            y = y.to(device=config.device, dtype=config.dtype)
-            yhat = model(x)
-            if isinstance(yhat, tuple):
-                # RNNs return y, h
-                yhat = yhat[0]
-
-            medians = []
-            if subtract_median:
-                for i in range(yhat.shape[1]):
-                    medians.append(torch.median(yhat[:, i]))
-                    yhat[:, i] = yhat[:, i] - torch.median(yhat[:, i])
-
-            num_samps = yhat.shape[0]
-            num_outputs = yhat.shape[1]
-            yh_temp = torch.cat((yhat, torch.ones([num_samps, 1]).to(config.device)), dim=1)
-
-            # JC notes:
-            # yh_temp.shape[0] = num_samps
-            # yh_temp.shape[1] = num_outputs+1
-
-            if not idpt:
-                # train theta normally (scaled velocities can depend on both input velocities)
-                # Theta has the following form: [[w_xx, w_xy, b_x]  (actually transpose of this?)
-                #                                [w_yx, w_yy, b_y]]
-                theta = torch.mm(torch.mm(torch.pinverse(torch.mm(torch.t(yh_temp), yh_temp)), torch.t(yh_temp)), y)
-                if verbose:
-                    print(theta)
-            else:
-                # train ~special~ theta
-                # (scaled velocities are indpendent of each other - this is the typical method)
-                # Theta has the following form: [[w_x,   0]
-                #                                [0,   w_y]
-                #                                [b_x, b_y]]
-                theta = torch.zeros((num_outputs + 1, num_outputs)).to(device=config.device, dtype=config.dtype)
-                for i in range(num_outputs):
-                    yhi = yh_temp[:, (i, -1)]
-                    thetai = torch.matmul(torch.mm(torch.pinverse(torch.mm(torch.t(yhi), yhi)), torch.t(yhi)), y[:, i])
-                    theta[i, i] = thetai[0]  # gain
-                    theta[-1, i] = thetai[1]  # bias
-                    if subtract_median:  # use the median as the bias
-                        theta[-1, i] = -1 * medians[i]
-                    if verbose:
-                        print("Finger %d RR Calculated Gain, Offset: %.6f, %.6f" % (i, thetai[0], thetai[1]))
-    return theta
-
+    if noise_std:
+        # adds white noise to each channel and timepoint (independent)
+        # noise = torch.normal(0, noise_std, x.shape)
+        noise = torch.normal(torch.zeros_like(x), noise_std)
+        x = x + noise.to(device=config.device)
+    
+    return x
 
 class OutputScaler:
-
-    def __init__(self, gains, biases, scaler_type=''):
+    def __init__(self, gains, biases):
         """An object to linearly scale data, like the output of a neural network
 
         Args:
             gains (1d np array):  [1,NumOutputs] array of gains
             biases (1d np array):           [1,NumOutputs] array of biases
-            scaler_type (str, optional): 'regression' or 'peaks' or 'noscale', etc.
         """
         self.gains = gains
         self.biases = biases

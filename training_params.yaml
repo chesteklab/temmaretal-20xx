@@ -1,0 +1,60 @@
+TCN:
+  learning_rate: 1e-4
+  weight_decay: 1e-2
+  max_epoch: 10
+  use_scheduler: False
+  scheduler_update: 0
+  scheduler_patience: 0
+  scheduler: None
+  num_lr_steps: 0
+  bias_std: 0
+  noise_std: 0
+
+TCN_nodp:
+  learning_rate: 1e-4
+  weight_decay: 1e-2
+  max_epoch: 10
+  use_scheduler: False
+  scheduler_update: 0
+  scheduler_patience: 0
+  scheduler: None
+  num_lr_steps: 0
+  bias_std: 0
+  noise_std: 0
+
+TCN_nobn:
+  learning_rate: 1e-4
+  weight_decay: 1e-2
+  max_epoch: 80
+  use_scheduler: False
+  scheduler_update: 0
+  scheduler_patience: 0
+  scheduler: None
+  num_lr_steps: 0
+  bias_std: 0
+  noise_std: 0
+
+TCN_noreg:
+  learning_rate: 1e-4
+  weight_decay: 1e-2
+  max_epoch: 80
+  use_scheduler: False
+  scheduler_update: 0
+  scheduler_patience: 0
+  scheduler: None
+  num_lr_steps: 0
+  bias_std: 0
+  noise_std: 0
+
+LSTM_xnorm_ynorm:
+  learning_rate: 2e-4
+  weight_decay: 0.003
+  batch_size: 64
+  max_epoch: 100
+  use_scheduler: True
+  scheduler_update: 100
+  scheduler_patience: 8
+  scheduler: 'plateau'
+  num_lr_steps: 2
+  bias_std: 0.1
+  noise_std: 0.2

@@ -1,0 +1,18 @@
+TCN:
+  layer_size: 256
+  conv_size: 3
+  conv_size_out: 16
+
+LSTM_xnorm_ynorm:
+  conv_size: 20
+  hidden_size: 300
+  num_layers: 1
+  drop_prob: 0.0
+  rnn_type: 'lstm'
+
+RNN:
+  conv_size: 20
+  hidden_size: 300
+  num_layers: 1
+  rnn_type: 'rnn'
+  

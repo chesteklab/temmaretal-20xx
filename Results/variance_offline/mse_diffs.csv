@@ -1,7 +1,0 @@
-,comparison,diff,pvalue,sd diff
-0,tcfnn v nobn,"mse   -0.138471
-dtype: float64","Ttest_indResult(statistic=array([-6.69227626]), pvalue=array([2.06871783e-11]))",0.16099042110793807
-1,tcfnn v nodp,"mse    0.004108
-dtype: float64","Ttest_indResult(statistic=array([0.23592503]), pvalue=array([0.59322431]))",-1.328650074240923
-2,tcfnn v noreg,"mse    0.076126
-dtype: float64","Ttest_indResult(statistic=array([4.66697841]), pvalue=array([0.99999821]))",-0.22270793500653083

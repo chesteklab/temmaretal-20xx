@@ -13,7 +13,7 @@ from utils import offline_metrics
 from utils import online_metrics
 
 
-def fits_online(serverpath, mk_name, date, runs, decoderlabels, trimlength = 5, offby2=False, preprocess=True):
+def fits_online(mk_name, date, runs, decoderlabels, trimlength = 5, offby2=False, preprocess=True):
 
     # load data from days - Including HC data. filter trials and separate runs by decoder
     if preprocess: # preprocess here is pretty light, just loading/creating z structs and saving them.
@@ -22,13 +22,15 @@ def fits_online(serverpath, mk_name, date, runs, decoderlabels, trimlength = 5, 
         zlist = []
         for i in np.arange(len(runs)):
             run = 'Run-{}'.format(str(runs[i]).zfill(3))
-            fpath = os.path.join(serverpath, mk_name, date, run)
+            fpath = os.path.join(config.raw_data_dir, mk_name, date, run)
 
-            z = ZStructTranslator(fpath, numChans=96, verbose=True)
+            z = ZStructTranslator(fpath, os.path.join(config.data_dir, 'fits_online'), numChans=96, verbose=True)
             z = z.asdataframe()
             if decoderlabels[i] != 'HC': # if not a hand control run, filter by only decoder on trials.
                 z = z[z['ClosedLoop'] == True] #make sure decode is on as well
             z = z[trimlength:]
+            print(decoderlabels[i])
+            print(np.sum(z['TrialSuccess'])/len(z['TrialSuccess']))
             z = z[z['TrialSuccess'] == True] # filter out unsuccessful trials
             z = z[z['BlankTrial'] == False] # remove blank trial
 
@@ -37,14 +39,15 @@ def fits_online(serverpath, mk_name, date, runs, decoderlabels, trimlength = 5, 
             zlist.append(z)
         z_all = pd.concat(zlist, axis=0) #concatenate list into one large dataframe
         z_all = z_all.reset_index()
-        z_all.to_pickle(os.path.join(config.datadir, 'fits_online', f'data_{date}.pkl'))
+        z_all.to_pickle(os.path.join(config.data_dir, 'fits_online', f'data_{date}.pkl'))
         print('data saved')
 
     else:
         ## Load in saved data
-        z_all = pd.read_pickle(os.path.join(config.datadir, 'fits_online', f'data_{date}.pkl'))
+        z_all = pd.read_pickle(os.path.join(config.data_dir, 'fits_online', f'data_{date}.pkl'))
         print('data loaded')
 
+    pdb.set_trace()
     # Figure Setup - Create figure and Subfigures
     onlinefitfig = plt.figure(figsize=(14,7))
     subfigs = onlinefitfig.subfigures(1,3, width_ratios=(3,2.5,2.5))
@@ -125,10 +128,10 @@ def fits_online(serverpath, mk_name, date, runs, decoderlabels, trimlength = 5, 
     (tt, rt, ot) = online_metrics.calcTrialTimes(z_all, offBy2=offby2)
     clMetrics = pd.DataFrame(data={'TimeToTarget': rt, 'OrbitTime': ot})
     clMetrics['Decoder'] = z_all['Decoder']
-    clMetrics.to_pickle(os.path.join(config.resultsdir, 'fits_online', f'onlinefitmetrics_{date}.pkl'))
+    clMetrics.to_pickle(os.path.join(config.results_dir, 'fits_online', f'onlinefitmetrics_{date}.pkl'))
 
     kldivs = pd.DataFrame(data=kldivs)
-    kldivs.to_pickle(os.path.join(config.resultsdir, 'fits_online', f'onlinefitdivs_{date}.pkl'))
+    kldivs.to_pickle(os.path.join(config.results_dir, 'fits_online', f'onlinefitdivs_{date}.pkl'))
 
     return kldivs, metricaxs, dist_tops, onlinefitfig, clMetrics
 
@@ -162,13 +165,13 @@ def fits_online_partII(kldivs, ax, results):
         day_summaries.append(pd.concat((tt,ot,orb),keys=('TT','OT','OR'),axis=1))
 
     
-    kldivs.to_csv(os.path.join(config.resultsdir, 'fits_online', 'kl_divs_w_counts.csv'))
+    kldivs.to_csv(os.path.join(config.results_dir, 'fits_online', 'kl_divs_w_counts.csv'))
     kldivs = kldivs.pivot(index='date',columns='Decoder',values='div').rename(columns={'RN':'div_RN','RK':'div_RK'})
     day_summaries = pd.concat(day_summaries, axis=0, keys=kldivs.index)
 
     # save results
-    day_summaries.to_csv(os.path.join(config.resultsdir, 'fits_online', 'online_fit_results.csv'))
-    kldivs.to_csv(os.path.join(config.resultsdir, 'fits_online', 'kl_divs.csv'))
+    day_summaries.to_csv(os.path.join(config.results_dir, 'fits_online', 'online_fit_results.csv'))
+    kldivs.to_csv(os.path.join(config.results_dir, 'fits_online', 'kl_divs.csv'))
 
     # do stats across days
     def runttest_ind(results, metric, althypo):
@@ -199,7 +202,7 @@ def fits_online_partII(kldivs, ax, results):
                           'std':[0,0]})
     
     crossdayresults = pd.concat((tt_output, ot_output, op_df), keys=['tt','ot','or'])
-    crossdayresults.to_csv(os.path.join(config.resultsdir, 'fits_online', 'cross_day_metrics.csv'))
+    crossdayresults.to_csv(os.path.join(config.results_dir, 'fits_online', 'cross_day_metrics.csv'))
     
     # difference of proportions test
     # null hypothesis, 0 difference in proportion
@@ -212,7 +215,7 @@ def fits_online_partII(kldivs, ax, results):
 
     #consolidate and save results
     statsout = pd.Series(data={'RN TT < RK TT':tt_test.pvalue, 'RN OT != RK OT':ot_test.pvalue, 'RN OR > RK OR':pval})
-    statsout.to_csv(os.path.join(config.resultsdir,'fits_online','stats.csv'))
+    statsout.to_csv(os.path.join(config.results_dir,'fits_online','stats.csv'))
 
     # PLOTTING
     # add average kl-div across days to distribution plots

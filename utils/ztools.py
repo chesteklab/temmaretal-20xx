@@ -31,10 +31,13 @@ class mat_struct_sim(object):
                     setattr(self, a, b)
         setattr(self, '_fieldnames', [*d])
 
-def ZStructTranslator(direc, overwrite=False, use_py=False, numChans=96, verbose=True):
+def ZStructTranslator(source_dir, out_dir, overwrite=False, numChans=96, verbose=True):
     '''
     This function translates the File Logger binaries into dictionaries. Most of the work is directly taken from Scott
     Ensel's ZStructTranslator class, created in 2019-2020
+
+    since the original .npy loading depends on loading object arrays, existing zarrays will use try to use pybmi - so need to regen them somewhere else to keep code independent
+    this also means we don't need to use the .mat portions - will just recreate the zarrays from scratch and put them in the data folder as well
 
     Inputs:	direc:		- the directory from which to grab the data
            	overwrite:	Default: does NOT overwrite previous zstruct in folder
@@ -56,43 +59,6 @@ def ZStructTranslator(direc, overwrite=False, use_py=False, numChans=96, verbose
           packets with an EndPacket byte of 255. It also assumes that there
           is exactly 1 feature in each neural packet.
     Based on ZStructTranslator.m written by Zach Irwin
-
-    Additional Notes (Not sure if still relevant, may change):
-    IF USING A MAC YOU MUST STORE FILES LOCALLY
-    CANNOT ACCESS FILES LOCATED ON SMB DRIVE
-
-    FOR PC PLS REPLACE EVERY \ WITH \\ in the file path
-
-    example use:
-
-    import ZStructTranslator
-
-    direc = 'Z:\\Data\\RPNI\\P1\\Chronic\\16th Visit\\2018-06-19\\Run-009'
-
-    EMG_data = ZStructTranslator(direc, overwrite=True)
-    #this will create a new .npy file
-    # overwrite = False to load a .mat file
-    # overwrite = False and use_py = True to load a .npy file
-
-    ############ How to access the data #################
-    # EMG_data is an object
-
-    EMG_data[0].FingerAnglesTIMRL
-    # this accesses the first trial of the data
-    # to get all of the trials
-    for trial in EMG_data[0:]:
-    print(trial.FingerAnglesTIMRL)
-
-    # the fields of FingerAnglesTIMRL can be accessed like a normal array FingerAnglesTIMRL[:,finger]
-
-    ########### For Spiking data ##############
-    for trial in EMG_data[:10]:
-    for numchan in range(len(trial.Channel)):
-    print(trial.Channel[numchan].SpikeTimes)
-
-    ########## How to see the fields ###########
-    EMG_data = ZStructTranslator(direc, overwrite=True)
-    print(EMG_data[0]._fieldnames)
     '''
 
     # loops over multiple characters to put into a single string
@@ -118,360 +84,267 @@ def ZStructTranslator(direc, overwrite=False, use_py=False, numChans=96, verbose
             elif isinstance(item, h5py.Group):  # test for group (go down)
                 yield from h5py_dataset_iterator(item, path)
 
-    def traverse_datasets(hdf_file):
-        with h5py.File(hdf_file, 'r') as f:
-            for path, _ in h5py_dataset_iterator(f):
-                yield path
-
     # function begins here
-    path = os.path.normpath(direc)  # this is system independent splitting of path
+    path = os.path.normpath(source_dir)  # this is system independent splitting of path
     folders = path.split(os.sep) # this is system independent splitting of path
 
     # check for previous zStruct
-    zfilename = "Z_" + folders[-3] + "_" + folders[-2] + "_" + folders[-1] + ".mat"  # this is full .mat filename
-    zfilename_python = "Z_" + folders[-3] + "_" + folders[-2] + "_" + folders[-1] + ".npy" #this is full .npy filename
+    z_filename = "Z_" + folders[-3] + "_" + folders[-2] + "_" + folders[-1] + ".npy" #this is full .npy filename
+    z_fullpath = os.path.join(out_dir, z_filename)
 
-    zFullPath = os.path.join(direc, zfilename)
-    zFullPath_py = os.path.join(direc, zfilename_python)
-
-    # if loading data in checks to see if previous .mat or .npy file exists
-
-    if (not overwrite and os.path.isfile(zFullPath) and not use_py):  # loads in .mat files by default
+    # if loading data in checks to see if previous file exists
+    if (not overwrite and os.path.isfile(z_fullpath)):
         if verbose:
-            print('Loading previous .mat Z Struct...')
-        try:  # if the existing .mat file is in a non-HDF5 file (i.e. non -v7.3 .mat file)
-            z = sio.loadmat(zFullPath, struct_as_record=False, squeeze_me=True)['z']
-            z = zarray(z)
-            if verbose:
-                print('Finished Loading previous .mat Z Struct')
-        except NotImplementedError:
-            dataset = [] #list for the dataset
-            names = [] #list of all the names
-            j = 0
-            with h5py.File(zFullPath, 'r') as f: # opens the file
-                for dset in traverse_datasets(zFullPath): #uses function to loop through nested sections
-                    if "/z/" in dset:
-                        names.append(dset.replace("/z/", "")) # this gets all the field names
-                        dataset.append([]) #might be able to get rid of this line to reduce if statement
-                        data = f.get(dset)
-                        for i in range(len(data[:])): #this part derefrences the HDF5 so you can see the data
-                            st = data[i][0]
-                            obj = f[st]
-                            try: # this is becuase on neural data Channel becomes an HDF5 group and not a HDF5 dataset so this throw an error
-                                dataset[j].append(obj[:].T)  # .T is so its in same form as sio
-                            except TypeError: # this only happens on Neural data (due to SpikeTimes being nested)
-                                #using h5py 3.7.0 and above, TypeError instead of AttributeError
-                                dataset[j].append([])
-                                for k in range(len(obj['SpikeTimes'])):
-                                    st2 = obj['SpikeTimes'][k][0]
-                                    obj2 = f[st2]
-                                    if np.array_equal(obj2[:],np.asarray([0, 0])): # for some reasons it shows [] as [0,0] so replace them
-                                        dataset[j][i].append([])
-                                    else:
-                                        dataset[j][i].append(obj2[:]) # otherwise format is fine
-                        j += 1
+            print('Loading previous .npy Z struct . . . ')
 
-                dict_data = []
-                z = []
-                num_trials = len(dataset[0])
-                for j in range(num_trials): #this creates a dictionary for each trial to match scipy.io format
-                    all_data = {} #intializes dictionary
-                    #the next lines are to make this indexed the same as scipy.io
-                    for i in range(len(names)):  #for scalar values gets rid of lists of lists format
-                        # this is all formatting for the spike times since its nested and makes this hard
-                        if names[i] == 'Channel':
-                            all_data[names[i]] = []
-                            for k in range(numChans):
-                                if len(dataset[i][j][k]) == 1: # if the index is [x] not []
-                                    if len(dataset[i][j][k][0]) != 1: #if value is of form [ x x x x x x . . . ]
-                                        all_data[names[i]].append({'SpikeTimes': dataset[i][j][k][0].astype(int)}) #if an array get rid of one list
-                                    else:
-                                        all_data[names[i]].append({'SpikeTimes': dataset[i][j][k][0][0].astype(int)}) #if just a scalar value get rid of both lists
-                                else:
-                                    all_data[names[i]].append({'SpikeTimes': dataset[i][j][k]}) # if just empty [] leave it
+        z = np.load(z_fullpath, allow_pickle=True).tolist()
+        z = zarray(z)
+        if verbose:
+            print('Finished loading .npy file')
+        return z
 
-                        else:
-                            if len(dataset[i][j]) == 1: # if value is of form [[...]]  and not [[...][...][...][...]]
-                                if len(dataset[i][j][0]) != 1: #if value is of form [ x x x x x x . . . ]
-                                    all_data[names[i]] = dataset[i][j][0] #if an array get rid of one list
-                                else:
-                                    all_data[names[i]] = dataset[i][j][0][0] #if just a scalar value get rid of both lists
-                            else:
-                                all_data[names[i]] = dataset[i][j] #if in the form [[...][...][...][...]] keep it that wasy
-
-                    dict_data.append(all_data)
-                    # this turns the dictionary into a object
-                    z.append(mat_struct_sim(dict_data[j]))
-                z = zarray(z) #has to be an ndarray to match scipy output.
-                print('Finished Loading previous .mat Z Struct')
     else:
-        if (not overwrite and os.path.isfile(zFullPath_py) and use_py):
-            if verbose:
-                print('Loading previous .npy Z struct . . . ')
+        if not overwrite and not os.path.isfile(z_fullpath):
+            print("{} not found. Please check directory".format(z_filename))
+        print("Overwriting previous .npy Z Struct or no .npy file found. Creating new one . . .")
 
-            z = np.load(zFullPath_py, allow_pickle=True).tolist()
-            z = zarray(z)
-            if verbose:
-                print('Finished loading .npy file')
-            return z
+        try:
+            # load in and read z translator
+            f = open(r'{}'.format(os.path.join(source_dir, "zScript.txt")), "r")
+            if f.mode == 'r':
+                contents = f.read()
+        except:
+            print("zScript.txt file not found. Make sure you're in correct folder")
+            sys.exit(1)
 
-        else:
+        # supported data types and their byte sizes
+        cls = {'uint8': 1, 'int8': 1, 'uint16': 2, 'int16': 2, 'uint32': 4, 'int32': 4, 'single': 4, 'double': 8}
+        # data types and their python equivalent
+        data_con = {'uint8': np.ubyte, 'int8': np.byte, 'uint16': np.ushort, 'int16': np.short, 'uint32': np.uintc,
+                    'int32': np.intc, 'single': np.single, 'double': np.double}
+        # Split Z string into its P/M/D/N substrings:
+        zstr = re.split(':.:', contents) #1st entry is blank
+
+        # Split each substring into its fieldname/datatype/numels substrings:
+        for i in range(len(zstr)):
+            zstr[i] = zstr[i].split('-') #last entry in each cell is blank
+
+        #Collect names, types, and sizes into list of list
+        names = []
+        types = []
+        sizes = []
+        for i in range(1, len(zstr)):
+            names.append([])
+            types.append([])
+            sizes.append([])
+            for j in range(0, len(zstr[i]) - 1, 3):
+                names[i - 1].append(zstr[i][j])
+            for j in range(1, len(zstr[i]) - 1, 3):
+                types[i - 1].append(zstr[i][j])
+            for j in range(2, len(zstr[i]) - 1, 3):
+                sizes[i - 1].append(zstr[i][j])
+
+        # Set flag(s) for specific field formatting:
+        for i in range(len(names)):
+            for j in range(len(names[i])):
+                if names[i][j] == 'SpikeChans':
+                    spikeformat = True
+                else:
+                    spikeformat = False
+
+        #Recover number of fields in each file type:
+        fnum = []
+        for i in range(len(names)):
+            fnum.append(len(names[i])) # Number of fields in each file
+
+        fnames = [None] * 2 * sum(fnum)
+        # use ord() to change hexidecimal notation to correct int values
+        bsizes = copy.deepcopy(sizes)
+        for i in range(len(fnum)):
+            for j in range(len(names[i])):
+                bsizes[i][j] = ord(bsizes[i][j])
+
+        # Calculate byte sizes for each feature and collect field names:
+        m = 0
+        for i in range(len(fnum)):
+            for j in range(len(names[i])):
+                fnames[m] = names[i][j]
+                m += 2
+                # calculate the bytes sizes
+                bsizes[i][j] = cls[types[i][j]] * bsizes[i][j] #Match type to cls, get type byte size, multiply by feature length:
+
+        # Calculate bytes per timestep for each file:
+        bytes = []
+        for i in range(len(bsizes)):
+            bytes.append(int(np.sum(bsizes[i]) + 2)) #plus 2 for each trial count
+
+        # Get number of trials in this run:
+        ###################
+        trial_list = glob.glob(os.path.join(source_dir, 'tParams*'))
+        ntrials = len(trial_list)
+        trials = []
+        for i in range(ntrials):
+            trials.append(int(re.findall('\d+', trial_list[i])[-1]))
+        trials = np.sort(trials)
+        if trials[-1] != ntrials:
+            warnings.warn("There is at least 1 dropped trial")
+
+        # initalize the dictionary with correct field names
+        dict_data = []
+        for j in range(trials[-1]):  # this creates a dictionary for each trial
+            all_data = {}
+            for i in range(0, len(fnames), 2):
+                all_data[fnames[i]] = None
+            all_data['TrialNumber'] = None
+            if spikeformat: # this is so its a nested dictionary and can match other formats
+                all_data['NeuralData'] = None
+                all_data['Channel'] = []
+                for k in range(numChans):
+                    all_data['Channel'].append({'SpikeTimes': []})
+            dict_data.append(all_data)
+
+        ############################## Parse Data Strings Into Dictionary: ######################################
+        data = [[], [], [], []] #initilize data
+        dropped_list = []
+        for i in range(trials[-1]):
             try:
-                # load in and read z translator
-                f = open(r'{}'.format(os.path.join(direc, "zScript.txt")), "r")
-                if f.mode == 'r':
-                    contents = f.read()
+                # add trial number to dict
+                dict_data[i]['TrialNumber'] = i + 1
+
+                #read in data files
+                data[0] = np.fromfile(os.path.join(source_dir, 'tParams{}.bin'.format(i + 1)), dtype='uint8')
+                data[1] = np.fromfile(os.path.join(source_dir, 'mBehavior{}.bin'.format(i + 1)), dtype='uint8')
+                data[2] = np.fromfile(os.path.join(source_dir, 'dBehavior{}.bin'.format(i + 1)), dtype='uint8')
+                data[3] = np.fromfile(os.path.join(source_dir, 'neural{}.bin'.format(i + 1)), dtype='uint8')
+
             except:
-                print("zScript.txt file not found. Make sure you're in correct folder")
-                sys.exit(1)
+                dict_data[i]['TrialNumber'] = None # this will set up the removal of empty dictionaries
+                dropped_list.append(i) # sets up the spike formatting
+                if verbose:
+                    print("Trail Number {} was dropped".format(i+1))
+                continue # this skips to the next trial
 
-            if not overwrite and not os.path.isfile(zFullPath) and not use_py:
-                print("{} not found. Please check directory".format(zfilename))
-                if (os.path.isfile(zFullPath_py)):
-                    if verbose:
-                        print('Found .npy version, loading instead.')
-                        print('Loading previous .npy Z struct . . . ')
+            # Iterate through file types 1-3 and add data to Z:
+            for j in range(4 - spikeformat):
 
-                    z = np.load(zFullPath_py, allow_pickle=True).tolist()
-                    z = zarray(z)
-                    if verbose:
-                        print('Finished loading .npy file')
-                    return z
+                # Calculate # of timesteps in this file:
+                nstep = int(len(data[j]) / bytes[j])
 
-                print("Creating .npy instead..")
-            elif not overwrite and not os.path.isfile(zFullPath_py) and use_py:
-                print("{} not found. Please check directory".format(zfilename_python))
-            print("Overwriting Previous .npy Z Struct or no .npy file found. Creating New one . . .")
+                # Calculate the byte offsets for each feature in the timestep:
+                offs = (3 + np.cumsum(bsizes[j])).tolist() #cumsum only works on np arrays so convert to list after
+                offs.insert(0, 3) # starts at 3 because of trail counts
 
-            # supported data types and their byte sizes
-            cls = {'uint8': 1, 'int8': 1, 'uint16': 2, 'int16': 2, 'uint32': 4, 'int32': 4, 'single': 4, 'double': 8}
-            # data types and their python equivalent
-            data_con = {'uint8': np.ubyte, 'int8': np.byte, 'uint16': np.ushort, 'int16': np.short, 'uint32': np.uintc,
-                        'int32': np.intc, 'single': np.single, 'double': np.double}
-            # Split Z string into its P/M/D/N substrings:
-            zstr = re.split(':.:', contents) #1st entry is blank
+                # Iterate through each field:
+                for k in range(fnum[j]):
+                    # Create a byte mask for the uint8 data:
+                    bmask = np.zeros(bytes[j], dtype=np.uint8)
+                    bmask[range(offs[k] - 1, offs[k] + bsizes[j][k] - 1)] = 1
+                    bmask = np.matlib.repmat(bmask, 1, nstep)
+                    bmask = bmask[0]
 
-            # Split each substring into its fieldname/datatype/numels substrings:
-            for i in range(len(zstr)):
-                zstr[i] = zstr[i].split('-') #last entry in each cell is blank
+                    #Extract data and cast to desired type:
+                    dat = data[j][bmask == 1].view((data_con[types[j][k]]))  # this has to be types
 
-            #Collect names, types, and sizes into list of list
-            names = []
-            types = []
-            sizes = []
-            for i in range(1, len(zstr)):
-                names.append([])
-                types.append([])
-                sizes.append([])
-                for j in range(0, len(zstr[i]) - 1, 3):
-                    names[i - 1].append(zstr[i][j])
-                for j in range(1, len(zstr[i]) - 1, 3):
-                    types[i - 1].append(zstr[i][j])
-                for j in range(2, len(zstr[i]) - 1, 3):
-                    sizes[i - 1].append(zstr[i][j])
+                    #Reshape the data and add to dict
+                    dict_data[i][names[j][k]] = np.reshape(dat, (nstep, -1))
 
-            # Set flag(s) for specific field formatting:
-            for i in range(len(names)):
-                for j in range(len(names[i])):
-                    if names[i][j] == 'SpikeChans':
-                        spikeformat = True
-                    else:
-                        spikeformat = False
-
-            #Recover number of fields in each file type:
-            fnum = []
-            for i in range(len(names)):
-                fnum.append(len(names[i])) # Number of fields in each file
-
-            fnames = [None] * 2 * sum(fnum)
-            # use ord() to change hexidecimal notation to correct int values
-            bsizes = copy.deepcopy(sizes)
-            for i in range(len(fnum)):
-                for j in range(len(names[i])):
-                    bsizes[i][j] = ord(bsizes[i][j])
-
-            # Calculate byte sizes for each feature and collect field names:
-            m = 0
-            for i in range(len(fnum)):
-                for j in range(len(names[i])):
-                    fnames[m] = names[i][j]
-                    m += 2
-                    # calculate the bytes sizes
-                    bsizes[i][j] = cls[types[i][j]] * bsizes[i][j] #Match type to cls, get type byte size, multiply by feature length:
-
-            # Calculate bytes per timestep for each file:
-            bytes = []
-            for i in range(len(bsizes)):
-                bytes.append(int(np.sum(bsizes[i]) + 2)) #plus 2 for each trial count
-
-            # Get number of trials in this run:
-            ###################
-            trial_list = glob.glob(os.path.join(direc, 'tParams*'))
-            ntrials = len(trial_list)
-            trials = []
-            for i in range(ntrials):
-                trials.append(int(re.findall('\d+', trial_list[i])[-1]))
-            trials = np.sort(trials)
-            if trials[-1] != ntrials:
-                warnings.warn("There is at least 1 dropped trial")
-
-            # initalize the dictionary with correct field names
-            dict_data = []
-            for j in range(trials[-1]):  # this creates a dictionary for each trial
-                all_data = {}
-                for i in range(0, len(fnames), 2):
-                    all_data[fnames[i]] = None
-                all_data['TrialNumber'] = None
-                if spikeformat: # this is so its a nested dictionary and can match other formats
-                    all_data['NeuralData'] = None
-                    all_data['Channel'] = []
-                    for k in range(numChans):
-                        all_data['Channel'].append({'SpikeTimes': []})
-                dict_data.append(all_data)
-
-            ############################## Parse Data Strings Into Dictionary: ######################################
-            data = [[], [], [], []] #initilize data
-            dropped_list = []
-            for i in range(trials[-1]):
-                try:
-                    # add trial number to dict
-                    dict_data[i]['TrialNumber'] = i + 1
-
-                    #read in data files
-                    data[0] = np.fromfile(os.path.join(direc, 'tParams{}.bin'.format(i + 1)), dtype='uint8')
-                    data[1] = np.fromfile(os.path.join(direc, 'mBehavior{}.bin'.format(i + 1)), dtype='uint8')
-                    data[2] = np.fromfile(os.path.join(direc, 'dBehavior{}.bin'.format(i + 1)), dtype='uint8')
-                    data[3] = np.fromfile(os.path.join(direc, 'neural{}.bin'.format(i + 1)), dtype='uint8')
-
-                except:
-                    dict_data[i]['TrialNumber'] = None # this will set up the removal of empty dictionaries
-                    dropped_list.append(i) # sets up the spike formatting
-                    if verbose:
-                        print("Trail Number {} was dropped".format(i+1))
-                    continue # this skips to the next trial
-
-                # Iterate through file types 1-3 and add data to Z:
-                for j in range(4 - spikeformat):
-
-                    # Calculate # of timesteps in this file:
-                    nstep = int(len(data[j]) / bytes[j])
-
-                    # Calculate the byte offsets for each feature in the timestep:
-                    offs = (3 + np.cumsum(bsizes[j])).tolist() #cumsum only works on np arrays so convert to list after
-                    offs.insert(0, 3) # starts at 3 because of trail counts
-
-                    # Iterate through each field:
-                    for k in range(fnum[j]):
-                        # Create a byte mask for the uint8 data:
-                        bmask = np.zeros(bytes[j], dtype=np.uint8)
-                        bmask[range(offs[k] - 1, offs[k] + bsizes[j][k] - 1)] = 1
-                        bmask = np.matlib.repmat(bmask, 1, nstep)
-                        bmask = bmask[0]
-
-                        #Extract data and cast to desired type:
-                        dat = data[j][bmask == 1].view((data_con[types[j][k]]))  # this has to be types
-
-                        #Reshape the data and add to dict
-                        dict_data[i][names[j][k]] = np.reshape(dat, (nstep, -1))
-
-                        #format the data so scalars are not in lists, arrays are in lists, and multiple arrays are lists of lists
-                        if len(dict_data[i][names[j][k]]) == 1: # if value is of form [[...]]  and not [[...][...][...][...]]
-                            if len(dict_data[i][names[j][k]][0]) != 1:
-                                dict_data[i][names[j][k]] = dict_data[i][names[j][k]][0]
-                            else:
-                                dict_data[i][names[j][k]] = dict_data[i][names[j][k]][0][0]
-
-                # Extract Neural data packets (split around TrialCount and End Packet byte):
-                if spikeformat:
-                    new_string = int_to_string(data[3]) # convert to one continuous string
-                    try:
-                        # If it is one of these special characters python doesnt like it and understand that its not special
-                        # so add the \ to escape the special character
-                        # for some reason though | thinks its super special
-                        # if you just add the backslash it then grabs that when matching and messes up
-                        # so the second if statement is removing that character from each match the first time it appears
-                        # and that works but I have no idea why this is such a problem
-                        if chr((i+1)%256) in ['.', '*', '^', '$', '+', '?', '{', '}', '[', ']', '|', '(', ')' ,'\\']:
-                            ndata = re.findall(
-                                '\\' + int_to_string(np.asarray([np.ushort(i + 1)]).view(np.ubyte)) + '[^ÿ]*ÿ',
-                                new_string)
+                    #format the data so scalars are not in lists, arrays are in lists, and multiple arrays are lists of lists
+                    if len(dict_data[i][names[j][k]]) == 1: # if value is of form [[...]]  and not [[...][...][...][...]]
+                        if len(dict_data[i][names[j][k]][0]) != 1:
+                            dict_data[i][names[j][k]] = dict_data[i][names[j][k]][0]
                         else:
-                            ndata = re.findall(int_to_string(np.asarray([np.ushort(i+1)]).view(np.ubyte)) + '[^ÿ]*ÿ', new_string)
+                            dict_data[i][names[j][k]] = dict_data[i][names[j][k]][0][0]
 
-                        neural_data = []
-                        for m in range(len(ndata)):
-                            if len(ndata[m][2:-1]) == 0:
-                                neural_data.append([])
-                            elif len(ndata[m][2:-1]) == 1:
-                                neural_data.append([ord(ndata[m][2:-1])])
-                            else:
-                                neural_data_2 = []
-                                for n in range(len(ndata[m][2:-1])):
-                                    neural_data_2.append(ord(ndata[m][2:-1][n]))
-                                neural_data.append(neural_data_2)
-
-                        dict_data[i]['NeuralData'] = neural_data
-
-                    except re.error: # data is an empty cell
-                        dict_data[i]['NeuralData'] = []
-
-            # Format Specific Fields
-            ############################################################################
-            # Change neural data field into spike times per channel:
+            # Extract Neural data packets (split around TrialCount and End Packet byte):
             if spikeformat:
-                for i in range(trials[-1]):
-                    if i in dropped_list: # if i equals the value of a dropped trial then skip it
-                        continue
+                new_string = int_to_string(data[3]) # convert to one continuous string
+                try:
+                    # If it is one of these special characters python doesnt like it and understand that its not special
+                    # so add the \ to escape the special character
+                    # for some reason though | thinks its super special
+                    # if you just add the backslash it then grabs that when matching and messes up
+                    # so the second if statement is removing that character from each match the first time it appears
+                    # and that works but I have no idea why this is such a problem
+                    if chr((i+1)%256) in ['.', '*', '^', '$', '+', '?', '{', '}', '[', ']', '|', '(', ')' ,'\\']:
+                        ndata = re.findall(
+                            '\\' + int_to_string(np.asarray([np.ushort(i + 1)]).view(np.ubyte)) + '[^ÿ]*ÿ',
+                            new_string)
+                    else:
+                        ndata = re.findall(int_to_string(np.asarray([np.ushort(i+1)]).view(np.ubyte)) + '[^ÿ]*ÿ', new_string)
 
-                    spikenums = np.zeros((numChans, len(dict_data[i]['NeuralData'])))
-                    for t in range(len(dict_data[i]['NeuralData'])):
-                        for j in range(len(dict_data[i]['NeuralData'][t])):
-                            if dict_data[i]['NeuralData'][t][j] != 0:
-                                spikenums[dict_data[i]['NeuralData'][t][j] - 1, t] += 1
+                    neural_data = []
+                    for m in range(len(ndata)):
+                        if len(ndata[m][2:-1]) == 0:
+                            neural_data.append([])
+                        elif len(ndata[m][2:-1]) == 1:
+                            neural_data.append([ord(ndata[m][2:-1])])
+                        else:
+                            neural_data_2 = []
+                            for n in range(len(ndata[m][2:-1])):
+                                neural_data_2.append(ord(ndata[m][2:-1][n]))
+                            neural_data.append(neural_data_2)
 
-                    for c in range(numChans):
-                        if np.any(spikenums[c, :]):
-                            times = dict_data[i]['ExperimentTime'][spikenums[c, :] == 1]
-                            spikenumsi = spikenums[c, (spikenums[c, :] == 1)]
-                            idx = np.cumsum(spikenumsi)
-                            j = np.ones((1, int(idx[-1])), dtype=int)
+                    dict_data[i]['NeuralData'] = neural_data
 
-                            dict_data[i]['Channel'][c]['SpikeTimes'] = times[np.cumsum(j) - 1].T
+                except re.error: # data is an empty cell
+                    dict_data[i]['NeuralData'] = []
 
-                        if len(dict_data[i]['Channel'][c]['SpikeTimes']) == 1:
-                            if len(dict_data[i]['Channel'][c]['SpikeTimes'][0]) != 1:
-                                dict_data[i]['Channel'][c]['SpikeTimes'] = dict_data[i]['Channel'][c]['SpikeTimes'][0].astype(
-                                    int)
-                            else:
-                                dict_data[i]['Channel'][c]['SpikeTimes'] = dict_data[i]['Channel'][c]['SpikeTimes'][0][
-                                    0].astype(int)
+        # Format Specific Fields
+        ############################################################################
+        # Change neural data field into spike times per channel:
+        if spikeformat:
+            for i in range(trials[-1]):
+                if i in dropped_list: # if i equals the value of a dropped trial then skip it
+                    continue
 
-                    #Removes these two fields
-                    dict_data[i].pop('SpikeChans', None)
-                    dict_data[i].pop('NeuralData', None)
+                spikenums = np.zeros((numChans, len(dict_data[i]['NeuralData'])))
+                for t in range(len(dict_data[i]['NeuralData'])):
+                    for j in range(len(dict_data[i]['NeuralData'][t])):
+                        if dict_data[i]['NeuralData'][t][j] != 0:
+                            spikenums[dict_data[i]['NeuralData'][t][j] - 1, t] += 1
+
+                for c in range(numChans):
+                    if np.any(spikenums[c, :]):
+                        times = dict_data[i]['ExperimentTime'][spikenums[c, :] == 1]
+                        spikenumsi = spikenums[c, (spikenums[c, :] == 1)]
+                        idx = np.cumsum(spikenumsi)
+                        j = np.ones((1, int(idx[-1])), dtype=int)
+
+                        dict_data[i]['Channel'][c]['SpikeTimes'] = times[np.cumsum(j) - 1].T
+
+                    if len(dict_data[i]['Channel'][c]['SpikeTimes']) == 1:
+                        if len(dict_data[i]['Channel'][c]['SpikeTimes'][0]) != 1:
+                            dict_data[i]['Channel'][c]['SpikeTimes'] = dict_data[i]['Channel'][c]['SpikeTimes'][0].astype(int)
+                        else:
+                            dict_data[i]['Channel'][c]['SpikeTimes'] = dict_data[i]['Channel'][c]['SpikeTimes'][0][
+                                0].astype(int)
+
+                #Removes these two fields
+                dict_data[i].pop('SpikeChans', None)
+                dict_data[i].pop('NeuralData', None)
 
 
-            # this next one removes the skipped trials
-            # must use a generator because of indexing issues if you don't
-            if trials[-1] != ntrials: # only run if there is a trial that is dropped to save time
-                dict_data = [trial for trial in dict_data if trial['TrialNumber'] != None]
+        # this next one removes the skipped trials
+        # must use a generator because of indexing issues if you don't
+        if trials[-1] != ntrials: # only run if there is a trial that is dropped to save time
+            dict_data = [trial for trial in dict_data if trial['TrialNumber'] != None]
 
-            # convert from dict to object
-            z = []
-            for i in range(ntrials):
-                z.append(mat_struct_sim(dict_data[i]))
-            z = zarray(z)
-            # save file
-            if verbose:
-                print('Saving now. . .')
-            # I put this try excpet because I was getting weird problems from the training of KF in the terminal
-            try:
-                np.save(zFullPath_py, z)
-            except:
-                np.save(zFullPath_py, z)
+        # convert from dict to object
+        z = []
+        for i in range(len(dict_data)):
+            z.append(mat_struct_sim(dict_data[i]))
+        z = zarray(z)
+        # save file
+        if verbose:
+            print('Saving now. . .')
+        # I put this try excpet because I was getting weird problems from the training of KF in the terminal
+        try:
+            np.save(z_fullpath, z)
+        except:
+            np.save(z_fullpath, z)
 
-            if verbose:
-                print('New ZStruct saved at {} \nFile is named {}'.format(direc, zfilename_python))
+        if verbose:
+            print('New ZStruct saved at {} \nFile is named {}'.format(out_dir, z_filename))
     return z
 
 # Adapted from JCostello's PrintZStruct function that prints a z struct to the output (located in PrintZStruct.py).

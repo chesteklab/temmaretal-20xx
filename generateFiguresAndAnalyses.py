@@ -30,8 +30,8 @@ if run_section:
 
             genfig = i == fignum
 
-            metrics, fitfig, mseax, klax = fits_offline(mk_name, date, run, preprocess=False, train_rr=False,
-                                                        train_ds=False, train_nn=False, genfig=genfig)
+            metrics, fitfig, mseax, klax = fits_offline(mk_name, date, run, preprocess=True, train_rr=True,
+                                                        train_ds=True, train_nn=True, genfig=genfig)
             results.append(metrics)
 
             if genfig:
@@ -39,17 +39,17 @@ if run_section:
                 finalaxs = (mseax, klax)
 
         results = pd.concat(results, keys=dates, names = ['date','indayidx'], axis=0).set_index('fold', append=True)
-        with open(os.path.join(config.resultsdir, 'fits_offline', f'offlineFitResults.pkl'), 'wb') as f:
+        with open(os.path.join(config.results_dir, 'fits_offline', f'offlineFitResults.pkl'), 'wb') as f:
             pickle.dump((results, finalfig, finalaxs), f)
     else:
-        with open(os.path.join(config.resultsdir, 'fits_offline', f'offlineFitResults.pkl'), 'rb') as f:
+        with open(os.path.join(config.results_dir, 'fits_offline', f'offlineFitResults.pkl'), 'rb') as f:
             results, finalfig, finalaxs = pickle.load(f)
 
     fits_offline_partII(results, finalaxs[0], finalaxs[1])
-    finalfig.savefig(os.path.join(config.resultsdir, 'fits_offline', f'offlineFitFigure_{dates[fignum]}'))
+    finalfig.savefig(os.path.join(config.results_dir, 'fits_offline', f'offlineFitFigure_{dates[fignum]}'))
 
 # Online Velocity Distribution Comparisons #############################################################################
-run_section = False
+run_section = True
 if run_section:
     mk_name = 'Joker'
     dates = ['2020-09-12',
@@ -70,8 +70,8 @@ if run_section:
     for i, (date, run, dclabs, off2) in enumerate(zip(dates, runs, decoderlabels, offby2)):
         genfig = i == 2
 
-        kldiv, ax, distaxs, fig, metrics = fits_online(config.serverpath, mk_name, date, run, dclabs, offby2=off2,
-                                              preprocess=False)
+        kldiv, ax, distaxs, fig, metrics = fits_online(mk_name, date, run, dclabs, offby2=off2,
+                                              preprocess=True)
         kldivs.append(kldiv)
 
         results.append(metrics)

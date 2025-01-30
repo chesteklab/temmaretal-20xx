@@ -39,7 +39,7 @@ onlinePalette = np.stack((hcColor, kfColor, nnColor))
 offlineVariancePalette = {'hc':hcColor, 'tcfnn':nnColor, 'nodp':nodpColor,
                           'nobn':nobnColor, 'noreg':noregColor}
 
-varianceOrder = ('tcfnn', 'nobn', 'nodp', 'noreg')
+variance_models = ('TCN', 'TCN_nobn', 'TCN_nodp', 'TCN_noreg')
 varianceLabels = ('tcfnn', 'dropout only (noBN)', 'batchnorm only (noDP)', 'noReg')
 varianceTicks = ('tcFNN', 'noBN', 'noDP', 'noReg')
 
@@ -61,15 +61,17 @@ dsmap = mpl.colors.LinearSegmentedColormap.from_list('dsmap',[[0,0,0],dsColor])
 # standard binsize (when not already used)
 binsize = 50
 numChans = 96
+batch_size = 64
 
 # get cwd for making the folders - so that all the data should generate/get saved into the right places
-cwd = os.getcwd()
-modeldir = os.path.join(cwd,'Models')
-resultsdir = os.path.join(cwd,'Results')
-datadir = os.path.join(cwd,'Data')
-serverpath = 'Z:\Data\Monkeys'
+raw_data_dir = 'Z:\Data\Monkeys'
+output_dir = 'Z:\\Student Folders\\Hisham_Temmar\\tcFNNPaper\\Revision'
+model_dir = os.path.join(output_dir,'Models')
+results_dir = os.path.join(output_dir,'Results')
+data_dir = os.path.join(output_dir,'Data')
+architectures_path = os.path.join(os.getcwd(), 'network_architectures.yaml')
+training_params_path = os.path.join(os.getcwd(), 'training_params.yaml')
 
-batch_size = 64
 
 device = torch.device('cuda:0')
 dtype = torch.float

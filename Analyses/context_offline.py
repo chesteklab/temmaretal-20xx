@@ -48,7 +48,7 @@ def context_offline(serverpath, mk_name, date, runs, labels, preprocess=True, tr
         trainData, inIDXList, outIDXList, mixIDXList = splitContextData(trainData, numFolds)
 
         # we should now be ready for training decoders, predicting, etc.
-        with open(os.path.join(config.datadir, 'context_offline', f'data_{date}.pkl'),'wb') as f:
+        with open(os.path.join(config.data_dir, 'context_offline', f'data_{date}.pkl'),'wb') as f:
             pickle.dump((trainData, testData, inIDXList, outIDXList, mixIDXList), f)
         print('Data Pre-Processed and Saved')
 
@@ -57,7 +57,7 @@ def context_offline(serverpath, mk_name, date, runs, labels, preprocess=True, tr
         train_nn = True
         train_rr = True
     else:
-        with open(os.path.join(config.datadir, 'context_offline', f'data_{date}.pkl'),'rb') as f:
+        with open(os.path.join(config.data_dir, 'context_offline', f'data_{date}.pkl'),'rb') as f:
             trainData, testData, inIDXList, outIDXList, mixIDXList = pickle.load(f)
         print("Data Loaded")
 
@@ -74,11 +74,11 @@ def context_offline(serverpath, mk_name, date, runs, labels, preprocess=True, tr
 
                 rr_models[context].append(offline_training.rrTrain(neu, vel, lbda=lbda))
             print(f'RR models for {context} trained.')
-        with open(os.path.join(config.modeldir, 'context_offline', f'RRModels_{date}.pkl'), 'wb') as f:
+        with open(os.path.join(config.model_dir, 'context_offline', f'RRModels_{date}.pkl'), 'wb') as f:
             pickle.dump(rr_models, f)
         print('RR Decoders Saved.')
     else:
-        with open(os.path.join(config.modeldir, 'context_offline', f'RRModels_{date}.pkl'), 'rb') as f:
+        with open(os.path.join(config.model_dir, 'context_offline', f'RRModels_{date}.pkl'), 'rb') as f:
             rr_models = pickle.load(f)
         print('RR Decoders Loaded.')
 
@@ -108,16 +108,12 @@ def context_offline(serverpath, mk_name, date, runs, labels, preprocess=True, tr
 
                 #Model instance and architecture
                 in_size = neu.shape[1]
-                layer_size = 256
-                ConvSize = 3
-                ConvSizeOut = 16
                 num_states = 2
-                nn_model = nn_decoders.tcFNN(in_size, layer_size, ConvSize, ConvSizeOut, num_states).to(device)
-
-                # set training params
-                learning_rate = 1e-4
-                weight_decay = 1e-2
-                opt = torch.optim.Adam(nn_model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+                # initialize the decoder and optimizer
+                model = offline_training.init_model(nn_decoders.tcFNN, 'TCN', in_size, num_states)
+                
+                # TODO - update the configs for the different decoder types
+                opt, scheduler = offline_training.init_opt(model, 'TCN')
 
                 # train network
                 loss_h, vloss_h = offline_training.fit(epochs, nn_model, opt, dl, dl2, print_every=15,
@@ -127,19 +123,16 @@ def context_offline(serverpath, mk_name, date, runs, labels, preprocess=True, tr
                 nn_models[context].append(nn_model)
 
                 #generate the scaler
-                ds_scale = offline_training.BasicDataset(neu, vel)
-                #have to use a different dataset, code for training scalers is written to work with
-                #our online rig, which is organized slightly differently
-                dl_scale = DataLoader(ds_scale, batch_size=len(ds_scale),shuffle=True) #shuffle doesn't matter
+                dl_scale = DataLoader(ds, batch_size=len(ds),shuffle=True) #shuffle doesn't matter
 
                 scalers[context].append(offline_training.generate_output_scaler(nn_model.to(device), dl_scale,
                                                                                 num_outputs=num_states))
             print(f'tcFNN models for {context} trained.')
-        with open(os.path.join(config.modeldir, 'context_offline', f'NNModels_{date}.pkl'), 'wb') as f:
+        with open(os.path.join(config.model_dir, 'context_offline', f'NNModels_{date}.pkl'), 'wb') as f:
             pickle.dump((nn_models, scalers), f)
         print('tcFNN Decoders Saved.')
     else:
-        with open(os.path.join(config.modeldir, 'context_offline', f'NNModels_{date}.pkl'), 'rb') as f:
+        with open(os.path.join(config.model_dir, 'context_offline', f'NNModels_{date}.pkl'), 'rb') as f:
             nn_models, scalers = pickle.load(f)
         print('tcFNN Decoders Loaded.')
 
@@ -358,6 +351,6 @@ def context_offline_partII(metrics, figdate): #metrics on all days
     comparisons['pvalue'].append(stats.ttest_rel(short_rr['mse'], full_rr['mse'], alternative='two-sided').pvalue)
 
     # save results
-    grouped_mses_means.to_csv(os.path.join(config.resultsdir,'context_offline','groupmeans.csv'))
-    pd.DataFrame(comparisons).to_csv(os.path.join(config.resultsdir, 'context_offline', 'comparisons.csv'))
-    cont_fig.savefig(os.path.join(config.resultsdir, 'context_offline', 'context_offlineFigure.pdf'))
+    grouped_mses_means.to_csv(os.path.join(config.results_dir,'context_offline','groupmeans.csv'))
+    pd.DataFrame(comparisons).to_csv(os.path.join(config.results_dir, 'context_offline', 'comparisons.csv'))
+    cont_fig.savefig(os.path.join(config.results_dir, 'context_offline', 'context_offlineFigure.pdf'))
