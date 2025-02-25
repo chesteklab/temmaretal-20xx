@@ -1,8 +1,7 @@
 import numpy as np
 import pdb
 import torch
-from torch.utils.data import DataLoader
-from torch.utils.data import Dataset
+from torch.utils.data import DataLoader, TensorDataset
 from utils import offline_metrics, nn_decoders
 import config
 import yaml
@@ -35,7 +34,6 @@ def rrTrain(X, y, lbda=0.0):
     p['Lambda'] = lbda
     return p
 
-
 def rrPredict(X, p):
     '''
     Translated from Sam Nason's Utility folder on SVN. This function makes ridge regression predictions from the neural
@@ -58,7 +56,6 @@ def rrPredict(X, p):
     else:
         ValueError('P does not contain a field Theta')
     return yhat
-
 
 def dsTrain(X, y, vel_idx=None, post_prob=0.5, alpha=0.01, lbda=4, initK=None, initMoveProb=None):
     '''
@@ -212,25 +209,50 @@ def init_opt(model, model_type):
     
     # TODO deal with training parameters
 
-def train_nn(train_neu, train_vel, model_class, model_type):
+def train_nn(train_neu, train_vel, model_class, model_type, normalize=True):
     #turn training data into tensors and move to gpu if needed
-    neu = torch.from_numpy(train_neu)
-    vel = torch.from_numpy(train_vel)
+    neu = torch.from_numpy(train_neu).to(config.device, config.dtype)
+    vel = torch.from_numpy(train_vel).to(config.device, config.dtype)
 
+    if normalize:
+        # normalize neural data (new by JC)
+        # neu_train has shape (num_trials, num_channels, num_time_hist)
+        neu_mean = torch.mean(neu[:, :, 0], dim=0)  # has shape (num_channels,)
+        neu_std = torch.std(neu[:, :, 0], dim=0)  # has shape (num_channels,)
+        neu_mean = neu_mean.unsqueeze(0).unsqueeze(2)  # has shape (1, num_channels, 1)
+        neu_std = neu_std.unsqueeze(0).unsqueeze(2)  # has shape (1, num_channels, 1)
+        neu = (neu - neu_mean) / (neu_std + 1e-6)
+
+        # normalize output velocities (new by JC)
+        vel_mean = torch.mean(vel, dim=0)  # has shape (num_dof,)
+        vel_std = torch.std(vel, dim=0)  # has shape (num_dof,)
+        vel_mean = vel_mean.unsqueeze(0)  # has shape (1, num_dof)
+        vel_std = vel_std.unsqueeze(0)  # has shape (1, num_dof)
+        vel = (vel - vel_mean) / (vel_std + 1e-6)
+    else:
+        neu_mean = None
+        neu_std = None
+        vel_mean = None
+        vel_std = None
+    
     #create pytorch datasets and then dataloaders
     ds = TensorDataset(neu, vel)
 
     #since we know how long we're training, val dataset can just be the same as training
     dl = DataLoader(ds, batch_size=config.batch_size, shuffle=True, drop_last=True)
-    dl2 = DataLoader(ds, batch_size=len(ds), shuffle=False, drop_last=True)
+    dl2 = DataLoader(ds, batch_size=len(ds), shuffle=False)
 
-    in_size = neu.shape[1]
-    out_size = vel.shape[1]
-
-    model = init_model(model_class, model_type, in_size, out_size)
+    model = init_model(model_class, model_type, neu.shape[1], vel.shape[1])
     opt, scheduler = init_opt(model, model_type)
 
-    #TODO 
+    #run fit function (model is trained here)
+    val_losses, train_losses, loss_iters = fit(model, 'TCN', opt, scheduler, dl, dl2)
+
+    #train scaler
+    scaler = generate_output_scaler(model, dl2, num_outputs=vel.shape[1])
+    model = model.cpu()
+    
+    return model, scaler, (val_losses, train_losses, loss_iters), (neu_mean, neu_std, vel_mean, vel_std)
 
 # Basic Fit Function for forward/backprop dependent models
 def fit(model, model_type, opt, scheduler, dl, val_dl, scaler_used=True):

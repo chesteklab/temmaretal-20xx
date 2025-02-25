@@ -8,7 +8,7 @@ import numpy as np
 import config
 
 
-def adjustfeats(X, Y, lag=0, hist=0, fillb4=None, out2d=False):
+def adjust_feats(X, Y, lag=0, hist=0, fillb4=None, out2d=False):
     '''
     This function takes in neural data X and behavior Y and returns two "adjusted" neural data and behavior matrices
     based on the optional params. Specifically the amount of lag between neural data and behavior can be set in units
@@ -22,7 +22,7 @@ def adjustfeats(X, Y, lag=0, hist=0, fillb4=None, out2d=False):
             number of states.
         - lag (int, optional):
             Defaults to 0. The number of bins to lag the neural data relative to the behavioral data. For example,
-            adjustFeats(X,Y, lag=1) will return X[0:-1] for adjX and Y[1:] for adjY.
+            adjust_feats(X,Y, lag=1) will return X[0:-1] for adjX and Y[1:] for adjY.
         - hist (int, optional):
             Default 0. The number of bins to append to each sample of neural data from the previous 'hist' bins.
         - fillb4 (ndarray or scalar, optional):
@@ -67,27 +67,24 @@ def adjustfeats(X, Y, lag=0, hist=0, fillb4=None, out2d=False):
 
     return adjX, adjY
 
-
-def datacleanup(data):
+def data_cleanup(data):
     vel = data['FingerAnglesTIMRL'][:, [6, 8]]
     neu = data['NeuralFeature']
     # add time history
-    neu, vel = adjustfeats(neu, vel, hist=2, out2d=True)
+    neu, vel = adjust_feats(neu, vel, hist=2, out2d=True)
     neu2D = np.concatenate((neu, np.ones((len(neu), 1))), axis=1) # add a column of ones for RR
     neu3D = neu.reshape(len(neu), config.numChans, -1)
     datadict = {'vel':vel,'neu2D':neu2D,'neu3D':neu3D}
     return datadict
 
-
-def truncateToShortest(data, length):
+def truncate_to_shortest(data, length):
     # this probably could have been done in a better way
     for context in data.keys():
         for key in data[context].keys():
             data[context][key] = data[context][key][:length,:]
     return data
 
-
-def splitOfflineData(data, numFolds):
+def split_offline_data(data, numFolds):
     '''
 
     :param data: dict with keys 'vel','neu','neu3D' produced by datacleanup()
@@ -128,8 +125,7 @@ def splitOfflineData(data, numFolds):
 
     return newdata, inIDXList, outIDXList
 
-
-def splitContextData(data, numFolds):
+def split_context_data(data, numFolds):
     '''
     :param data: dict with contexts as keys - each key contains a dict with keys 'vel','neu','neu3d' produced by
     datacleanup().

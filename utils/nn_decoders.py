@@ -8,7 +8,7 @@ device = config.device
 def flatten(x, start_dim=1, end_dim=-1):
     return x.flatten(start_dim=start_dim, end_dim=end_dim)
 
-class tcFNN(nn.Module):
+class TCN(nn.Module):
     def __init__(self, input_size, hidden_size, ConvSize, ConvSizeOut, num_states):
         super().__init__()
         # assign layer objects to class attributes
@@ -54,7 +54,7 @@ class tcFNN(nn.Module):
         return scores
 
 # WillseyNet with no batchnorm or dropout
-class noreg_tcFNN(nn.Module):
+class TCNNoReg(nn.Module):
     def __init__(self, input_size, hidden_size, ConvSize, ConvSizeOut, num_states):
         super().__init__()
         # assign layer objects to class attributes
@@ -88,7 +88,7 @@ class noreg_tcFNN(nn.Module):
         scores = self.fc4(x)
         return scores
 
-class tcFNN_nobn(nn.Module):
+class TCNNoBN(nn.Module):
     def __init__(self, input_size, hidden_size, ConvSize, ConvSizeOut, num_states):
         super().__init__()
         # assign layer objects to class attributes
@@ -126,7 +126,7 @@ class tcFNN_nobn(nn.Module):
 
         return scores
 
-class tcFNN_nodp(nn.Module):
+class TCNNoDP(nn.Module):
     
     def __init__(self, input_size, hidden_size, ConvSize, ConvSizeOut, num_states):
         super().__init__()

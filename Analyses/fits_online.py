@@ -47,7 +47,6 @@ def fits_online(mk_name, date, runs, decoderlabels, trimlength = 5, offby2=False
         z_all = pd.read_pickle(os.path.join(config.data_dir, 'fits_online', f'data_{date}.pkl'))
         print('data loaded')
 
-    pdb.set_trace()
     # Figure Setup - Create figure and Subfigures
     onlinefitfig = plt.figure(figsize=(14,7))
     subfigs = onlinefitfig.subfigures(1,3, width_ratios=(3,2.5,2.5))
@@ -78,17 +77,17 @@ def fits_online(mk_name, date, runs, decoderlabels, trimlength = 5, offby2=False
 
     # plot settings
     posaxs[1].legend()
-    posaxs[1].get_legend().legendHandles[0].set(edgecolor='k',facecolor=None)
+    # posaxs[1].get_legend().legendHandles[0].set(edgecolor='k',facecolor=None)
     posaxs[2].set(xlabel='Time (sec)')
 
-    for ax,color in zip(posaxs, [config.hcColor, config.kfColor, config.nnColor]):
+    for ax,color in zip(posaxs, [config.hcColor, config.kfColor, config.tcnColor]):
         [i.set_linewidth(2) for i in ax.spines.values()]
         [i.set_edgecolor(color) for i in ax.spines.values()]
 
     # Per day, plot velocity distributions with broken axes, and calculate the KL divergence
     porder = (z_RK, z_RN)
     labels = ('RK', 'RN')
-    palette = (config.kfColor, config.nnColor)
+    palette = (config.kfColor, config.tcnColor)
     kldivs = {'div':[], 'Decoder':[], 'counts':[], 'hc_counts':[]}
     for i, (zi, colors, decoder) in enumerate(zip(porder, palette, labels)):
         # top plot
@@ -229,12 +228,12 @@ def fits_online_partII(kldivs, ax, results):
                    transform=distax[1].transAxes, fontsize=mpl.rcParams['axes.labelsize'], ha='center')
 
     # bar plots for time to target, orbiting rate, nonzero orbiting time
-    sns.barplot(results.where(results['TimeToTarget'] != 0), x='TimeToTarget', y='Decoder', errorbar='se', ax=metricax[0],
-                palette=config.onlinePalette[[0, 2, 1], :])
-    sns.barplot(orbit_props.reset_index(), x=0, y='Decoder', ax=metricax[1],
-                palette=config.onlinePalette[[0, 2, 1], :], order=['HC', 'RN', 'RK'])
-    sns.barplot(results.where(results['OrbitTime'] != 0), x='OrbitTime', y='Decoder', errorbar='se', ax=metricax[2],
-                palette=config.onlinePalette[[0, 2, 1], :])
+    
+    sns.barplot(results[results['TimeToTarget'] != 0], x='TimeToTarget', y='date', hue='Decoder', errorbar='se', ax=metricax[0], 
+                palette=config.online_palette[[0, 2, 1], :])
+    sns.barplot(orbit_props.reset_index(), x=0, y='Decoder', ax=metricax[1], palette=config.online_palette[[0, 2, 1], :], order=['HC', 'RN', 'RK'])
+    sns.barplot(results[results['OrbitTime'] != 0], x='OrbitTime', y='date', hue='Decoder', errorbar='se', ax=metricax[2], 
+                palette=config.online_palette[[0, 2, 1], :])
 
     # plot settings
     metricax[0].set(title='Time-to-target', ylabel=None, xlabel='Time (s)', xlim=(0, 1500),

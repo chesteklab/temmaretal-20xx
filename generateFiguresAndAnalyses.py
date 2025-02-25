@@ -30,8 +30,8 @@ if run_section:
 
             genfig = i == fignum
 
-            metrics, fitfig, mseax, klax = fits_offline(mk_name, date, run, preprocess=True, train_rr=True,
-                                                        train_ds=True, train_nn=True, genfig=genfig)
+            metrics, fitfig, mseax, klax = fits_offline(mk_name, date, run, preprocess=False, train_rr=False,
+                                                        train_ds=False, train_tcn=True, train_rnn=False, genfig=genfig)
             results.append(metrics)
 
             if genfig:
@@ -66,6 +66,7 @@ if run_section:
     finalfig = None
     finalax = None
     
+
     results = []
     for i, (date, run, dclabs, off2) in enumerate(zip(dates, runs, decoderlabels, offby2)):
         genfig = i == 2
@@ -84,10 +85,10 @@ if run_section:
     kldivs = pd.concat(kldivs, keys=dates, names=['date'],axis=0).reset_index().drop('level_1',axis=1)
 
     fits_online_partII(kldivs, finalax, results)
-    finalfig.savefig(os.path.join(config.resultsdir,'fits_online',f'onlineFitFigure_{dates[0]}.pdf'))
+    finalfig.savefig(os.path.join(config.results_dir,'fits_online',f'onlineFitFigure_{dates[0]}.pdf'))
 
 # Offline tcFNN Training Variance ######################################################################################
-run_section = True
+run_section = False
 
 # take four days of offline data - same days as used for offline fit section
 if run_section:
@@ -171,7 +172,7 @@ if run_section:
 run_section = False
 
 if run_section:
-    firstpart = True
+    firstpart = False
     if firstpart:
         results = []
         mk_name = 'Joker'
@@ -192,17 +193,15 @@ if run_section:
                   ['SprWrst', 'Wrist', 'Normal', 'Spring']]
 
         for date, run, label in zip(dates, runs, labels):
-            metrics = context_offline(config.serverpath, mk_name, date, run, label,
-                                                      preprocess=False, train_rr=False, train_nn=False)
+            metrics = context_offline(mk_name, date, run, label,
+                                      preprocess=False, train_rr=False, train_tcn=False, train_rnn=False)
             results.append(metrics)
 
         results = pd.concat(results, axis=0).reset_index()
-        results.to_csv(os.path.join(config.resultsdir, 'context_offline','resultsAlldays.csv'))
-        with open(os.path.join(config.resultsdir, 'context_offline', f'contextResults.pkl'), 'wb') as f:
+        results.to_csv(os.path.join(config.results_dir, 'context_offline','resultsAlldays.csv'))
+        with open(os.path.join(config.results_dir, 'context_offline', f'contextResults.pkl'), 'wb') as f:
             pickle.dump(results, f)
     else:
-        with open(os.path.join(config.resultsdir, 'context_offline', f'contextResults.pkl'), 'rb') as f:
+        with open(os.path.join(config.results_dir, 'context_offline', f'contextResults.pkl'), 'rb') as f:
             results = pickle.load(f)
-    context_offline_partII(results, '2022-06-02')
-
-plt.show()
+    context_offline_partII(results, '2023-04-11')

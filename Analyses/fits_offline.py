@@ -15,14 +15,13 @@ import config
 import utils.online_metrics
 from utils.ztools import ZStructTranslator, getZFeats, sliceMiddleTrials
 from utils import offline_training, nn_decoders, offline_metrics
-from utils.offline_data import datacleanup, splitOfflineData
+from utils.offline_data import data_cleanup, split_offline_data
 
 '''
 Addressing the first block of the paper: Do NNs fit better than other methods?
 - Offline Figure showing fit of predicted velocities of various approaches to hand control
 '''
-def fits_offline(mk_name, date, run, preprocess=True, train_rr=True, train_ds=True,
-                         train_nn=True, genfig=True):
+def fits_offline(mk_name, date, run, preprocess=True, train_rr=True, train_ds=True, train_tcn=True, train_rnn = True, genfig=True):
     #setup pytorch stuff
     device = torch.device('cuda:0')
     dtype = torch.float
@@ -43,11 +42,11 @@ def fits_offline(mk_name, date, run, preprocess=True, train_rr=True, train_ds=Tr
         testDD = getZFeats(zsliced[500:], config.binsize, featList=['FingerAnglesTIMRL', 'NeuralFeature','TrialNumber'])
 
         # separate feats, add time history, add a column of ones for RR, and reshape data for NN.
-        pretrainData = datacleanup(trainDD)
-        testData = datacleanup(testDD)
+        pretrainData = data_cleanup(trainDD)
+        testData = data_cleanup(testDD)
 
         #split the training data into folds
-        trainData, inIDXList, outIDXList = splitOfflineData(pretrainData,numFolds)
+        trainData, inIDXList, outIDXList = split_offline_data(pretrainData,numFolds)
 
         # get trialnumber for testDD
         trial_num = testDD['TrialNumber'][3:,0].astype(int)
@@ -69,11 +68,11 @@ def fits_offline(mk_name, date, run, preprocess=True, train_rr=True, train_ds=Tr
             vel = trainData['vel'][k]
             rr_models.append(offline_training.rrTrain(neu, vel, lbda=lbda))
         #save model
-        with open(os.path.join(config.model_dir,'fits_offline',f'RRmodel_{date}.pkl'), 'wb') as f:
+        with open(os.path.join(config.model_dir,'fits_offline',f'rr_models_{date}.pkl'), 'wb') as f:
             pickle.dump(rr_models, f)
         print('RR Decoders Saved')
     else:
-        with open(os.path.join(config.model_dir,'fits_offline',f'RRmodel_{date}.pkl'), 'rb') as f:
+        with open(os.path.join(config.model_dir,'fits_offline',f'rr_models_{date}.pkl'), 'rb') as f:
             rr_models = pickle.load(f)
         print('RR Decoders Loaded')
 
@@ -85,94 +84,104 @@ def fits_offline(mk_name, date, run, preprocess=True, train_rr=True, train_ds=Tr
             vel = trainData['vel'][k]
 
             ds_models.append(offline_training.dsTrain(neu, vel))
-        with open(os.path.join(config.model_dir, 'fits_offline', f'DSmodel_{date}.pkl'), 'wb') as f:
+        with open(os.path.join(config.model_dir, 'fits_offline', f'ds_models_{date}.pkl'), 'wb') as f:
             pickle.dump(ds_models, f)
         print('DS Decoders Saved')
     else:
-        with open(os.path.join(config.model_dir, 'fits_offline', f'DSmodel_{date}.pkl'), 'rb') as f:
+        with open(os.path.join(config.model_dir, 'fits_offline', f'ds_models_{date}.pkl'), 'rb') as f:
             ds_models = pickle.load(f)
         print('DS Decoders Loaded')
 
-    ## Train NN decoders
-    
-    
-    if train_nn:
+    ## Train tcn decoder
+    if train_tcn:
         nn_models = []
         scalers = []
         for k in np.arange(numFolds):
-            neu = torch.from_numpy(trainData['neu3D'][k]).to(device, dtype)
-            vel = torch.from_numpy(trainData['vel'][k]).to(device, dtype)
-
-            #create pytorch datasets and then dataloaders
-            ds = TensorDataset(neu, vel)
-
-            #since we know how long we're training, val dataset can just be the same as training
-            dl = DataLoader(ds, batch_size=config.batch_size, shuffle=True, drop_last=True)
-            dl2 = DataLoader(ds, batch_size=len(ds), shuffle=False, drop_last=True)
-
-            #Model Instance and architecture
-            in_size = neu.shape[1]
-            num_states = 2
-
-            model = offline_training.init_model(nn_decoders.RecurrentModel, 'LSTM_xnorm_ynorm', in_size, num_states)
-            opt, scheduler = offline_training.init_opt(model, 'LSTM_xnorm_ynorm')
-
-            #run fit function (model is trained here)
-            _, _, _ = offline_training.fit(model,
-                                           'LSTM_xnorm_ynorm',
-                                           opt,
-                                           scheduler,
-                                           dl,
-                                           dl2)
-            #train scaler
-            dl_scale = DataLoader(ds, batch_size=len(ds), shuffle=True)
-            scalers.append(offline_training.generate_output_scaler(model, dl_scale, num_outputs=num_states))
-            model = model.cpu()
+            model, scaler, _, _ = offline_training.train_nn(trainData['neu3D'][k], 
+                                                            trainData['vel'][k], 
+                                                            nn_decoders.TCN, 
+                                                            'TCN',
+                                                            normalize=False)
             nn_models.append(model)
-
-        print(f'tcFNN models trained.')
+            scalers.append(scaler)
+    
+        print(f'tcn models trained.')
         # save decoders and scalers
-        with open(os.path.join(config.model_dir, 'fits_offline', f'tcFNNmodels_{date}.pkl'), 'wb') as f:
+        with open(os.path.join(config.model_dir, 'fits_offline', f'tcn_models_{date}.pkl'), 'wb') as f:
             pickle.dump((nn_models, scalers), f)
-        print('tcFNN models Saved')
+        print('tcn models Saved')
     else:
-        with open(os.path.join(config.model_dir, 'fits_offline', f'tcFNNmodels_{date}.pkl'), 'rb') as f:
+        with open(os.path.join(config.model_dir, 'fits_offline', f'tcn_models_{date}.pkl'), 'rb') as f:
             nn_models, scalers = pickle.load(f)
         print('NN Decoders Loaded')
 
-    
+    # train rnn
+    if train_rnn:
+        rnn_models = []
+        rnn_scalers = []
+        norm_params = []
+        for k in np.arange(numFolds):
+            model, scaler, _, norms = offline_training.train_nn(trainData['neu3D'][k],
+                                                               trainData['vel'][k], 
+                                                               nn_decoders.RecurrentModel,
+                                                               'LSTM_xnorm_ynorm')
+            rnn_models.append(model)
+            rnn_scalers.append(scaler)
+            norm_params.append(norms)
+        print(f'rnn models trained.')
+        # save decoders and scalers
+        with open(os.path.join(config.model_dir, 'fits_offline', f'rnn_models_{date}.pkl'), 'wb') as f:
+            pickle.dump((rnn_models, rnn_scalers, norm_params), f)
+        print('rnn models saved, means and stds saved')
+    else:
+        with open(os.path.join(config.model_dir, 'fits_offline', f'rnn_models_{date}.pkl'), 'rb') as f:
+            rnn_models, rnn_scalers, norm_params = pickle.load(f)
+        print('rnn models loaded, means and stds loaded')
+
     # Get predictions for each decoder
     rr_predictions = np.zeros((testData['vel'].shape[0], testData['vel'].shape[1], numFolds))
     nn_predictions = np.zeros_like(rr_predictions)
+    rnn_predictions = np.zeros_like(rr_predictions)
     ds_predictions = np.zeros_like(rr_predictions)
     ds_probabilities = np.zeros((testData['vel'].shape[0], numFolds))
-    for i in range(numFolds):
-        rr = rr_models[i]
-        tcfnn = nn_models[i].to(device)
-        tcfnnscaler = scalers[i]
-        ds = ds_models[i]
 
-        tcfnn.eval()
+    for k in range(numFolds):
+        rr = rr_models[k]
+        ds = ds_models[k]
+        tcn = nn_models[k].to(config.device)
+        tcn_scaler = scalers[k]
+        rnn = rnn_models[k].to(config.device)
+        rnn_scaler = rnn_scalers[k]
+        norms = norm_params[k] # [neu_mean, neu_std, vel_mean, vel_std]
+        
+        tcn.eval()
+        rnn.eval()
 
-        neu3 = torch.from_numpy(testData['neu3D']).to(device, dtype)
-        yh = tcfnn(neu3)
-        if isinstance(yh, tuple):
-            # RNNs return y, h
-            yh = yh[0]
+        neu_test = torch.from_numpy(testData['neu3D']).to(config.device, config.dtype)
+        tcn_yh = tcn(neu_test)
+        
+        neu_test_norm = (neu_test - norms[0]) / (norms[1] + 1e-6)
+        rnn_yh = rnn(neu_test_norm)
+        rnn_yh = rnn_scaler.scale(rnn_yh[0].cpu().detach().numpy())
+        rnn_yh = rnn_yh * norms[3].cpu().detach().numpy() + norms[2].cpu().detach().numpy()
 
-        nn_predictions[:,:,i] = tcfnnscaler.scale(yh).cpu().detach().numpy()
-        rr_predictions[:,:,i] = offline_training.rrPredict(testData['neu2D'], rr)
-        ds_predictions[:,:,i], pr = offline_training.dsPredict(testData['neu2D'], ds)
-        ds_probabilities[:, i:i+1] = pr
+        nn_predictions[:,:,k] = tcn_scaler.scale(tcn_yh).cpu().detach().numpy()
+        rnn_predictions[:,:,k] = rnn_yh
+        rr_predictions[:,:,k] = offline_training.rrPredict(testData['neu2D'], rr)
+        ds_predictions[:,:,k], pr = offline_training.dsPredict(testData['neu2D'], ds)
+        ds_probabilities[:, k:k+1] = pr
 
     #scale predictions for au/sec
     binsize = config.binsize
     sec = 1000
 
     nn_predictions = nn_predictions/binsize * sec
+    rnn_predictions = rnn_predictions/binsize * sec
     rr_predictions = rr_predictions/binsize * sec
     ds_predictions = ds_predictions/binsize * sec
     vel_test = testData['vel']/binsize * sec
+
+    fig, axs = plt.subplots(1,4)
 
     # Calculate Metrics
     sortidx = np.argsort(np.abs(vel_test.flatten()))  # sort absolute values of velocities.
@@ -183,16 +192,16 @@ def fits_offline(mk_name, date, run, preprocess=True, train_rr=True, train_ds=Tr
     lo_thr = vel_test.flatten()[lo_vel_idx[-1]]
 
     binedges = np.linspace(-9, 9, 100)
-    decoders = ('rr','ds','nn')
-    preds = (rr_predictions, ds_predictions, nn_predictions)
+    decoders = ('rr','ds','tcn', 'rnn')
+    preds = (rr_predictions, ds_predictions, nn_predictions, rnn_predictions)
     metrics = {'cc':[], 'mse':[], 'vaf':[],'mse_hi':[],'mse_lo':[],
                   'mean_hi':[],'mean_lo':[],'kl_div':[], 'decoder':[], 'fold':[]}
 
-    with open(os.path.join(config.results_dir, 'fits_offline', f'offlineFitPrediction_{date}.pkl'), 'wb') as f:
+    with open(os.path.join(config.results_dir, 'fits_offline', f'predictions_all_models_{date}.pkl'), 'wb') as f:
         pickle.dump((preds, vel_test), f)
 
     for k in np.arange(numFolds):
-        for i,decoder in enumerate(decoders):
+        for i, decoder in enumerate(decoders):
             prediction = preds[i][:,:,k].flatten()
             truth = vel_test.flatten()
 
@@ -230,13 +239,13 @@ def fits_offline(mk_name, date, run, preprocess=True, train_rr=True, train_ds=Tr
     klax = None
     if genfig:
         # Creating the Figure:
-        fitFig = plt.figure(figsize=(16,8))
+        fitFig = plt.figure(figsize=(20,8))
 
-        subfigs = fitFig.add_gridspec(2,2, width_ratios = [3, 1])
-        tracespec = subfigs[0,0].subgridspec(1,3)
+        subfigs = fitFig.add_gridspec(2,2, width_ratios = [4, 1])
+        tracespec = subfigs[0,0].subgridspec(1,4)
         mseax = fitFig.add_subplot(subfigs[0,1])
 
-        distspec = subfigs[1,0].subgridspec(2,3)
+        distspec = subfigs[1,0].subgridspec(2,4)
         klax = fitFig.add_subplot(subfigs[1,1])
 
         plotrange = np.arange(1499, 1562)
@@ -246,12 +255,12 @@ def fits_offline(mk_name, date, run, preprocess=True, train_rr=True, train_ds=Tr
         # choose one fold's decoders to look at (as to not choose between 5 graphs a day)
         fold = 2
         traceid = 0 #finger to use in traces
-        predLabels = ('Ridge Regression RR', 'Sachs et al. 2016 DS', 'Willsey et al. 2022 tcFNN')
+        predLabels = ('Ridge Regression RR', 'Sachs et al. 2016 DS', 'Willsey et al. 2022 tcFNN', 'LSTM')
 
         for i, pred in enumerate(preds):
             ax = fitFig.add_subplot(tracespec[i])
             ax.plot(times, vel_test[plotrange, traceid], color=config.hcColor, lw=histwidth)
-            ax.plot(times, pred[plotrange, traceid, fold], color=config.offlinePalette[i, :], lw=histwidth)
+            ax.plot(times, pred[plotrange, traceid, fold], color=config.offline_palette[i, :], lw=histwidth)
 
             if i == 1:
                 ax.scatter(times, pred[plotrange, traceid, fold], c=ds_probabilities[plotrange,fold],
@@ -265,8 +274,10 @@ def fits_offline(mk_name, date, run, preprocess=True, train_rr=True, train_ds=Tr
                 ax.set(ylabel='Velocity (Flex/Sec)', yticks=(-1,0,1,2))
             else:
                 ax.set_yticks((-1,0,1,2), labels=[])
-            ax.set(xlabel='Time (sec)',title=predLabels[i], ylim=(-1.5,2.5),
-                   xlim=(times[0],times[-1]),xticks=(times[1],times[-2]))
+
+            ax.set(xlabel='Time (sec)',title=predLabels[i], ylim=(-1.5,2.5), xlim=(times[0],times[-1]), xticks=(75, 76, 77, 78))
+            # ax.set(xlabel='Time (sec)',title=predLabels[i], ylim=(-1.5,2.5),
+            #        xlim=(times[0],times[-1]),xticks=(times[1],times[-2]))
 
             topax = fitFig.add_subplot(distspec[0,i])
             botax = fitFig.add_subplot(distspec[1,i])
@@ -274,7 +285,7 @@ def fits_offline(mk_name, date, run, preprocess=True, train_rr=True, train_ds=Tr
             #plot the same data on both axes
             def histplot(ax, top=True, addlines=True):
                 ax.hist(vel_test.flatten(), color=config.hcColor, density=True, bins=binedges)
-                ax.hist(pred[:,:,:].flatten(), color=config.offlinePalette[i,:], density=True, histtype='step',
+                ax.hist(pred[:,:,k].flatten(), color=config.offline_palette[i,:], density=True, histtype='step',
                         bins=binedges, linewidth=histwidth)
                 lineargs = {'linestyle':'-','color':'k', 'lw':3}
                 arrowargs = {'color':'k','width':0.01}
@@ -313,16 +324,19 @@ def fits_offline_partII(results, mseax, klax):
 
     rr_summary = results.loc[results['decoder'] == 'rr', :].groupby(level='date').describe()
     ds_summary = results.loc[results['decoder'] == 'ds', :].groupby(level='date').describe()
-    nn_summary = results.loc[results['decoder'] == 'nn', :].groupby(level='date').describe()
+    tcn_summary = results.loc[results['decoder'] == 'tcn', :].groupby(level='date').describe()
+    rnn_summary = results.loc[results['decoder'] == 'rnn', :].groupby(level='date').describe()
 
     rr_summary.to_csv(os.path.join(config.results_dir, 'fits_offline', 'rr_summary.csv'))
     ds_summary.to_csv(os.path.join(config.results_dir, 'fits_offline', 'ds_summary.csv'))
-    nn_summary.to_csv(os.path.join(config.results_dir, 'fits_offline', 'nn_summary.csv'))
+    tcn_summary.to_csv(os.path.join(config.results_dir, 'fits_offline', 'tcn_summary.csv'))
+    rnn_summary.to_csv(os.path.join(config.results_dir, 'fits_offline', 'rnn_summary.csv'))
 
     def dopairedstats(metric, althypo, ):
         rrm = results.loc[results['decoder'] == 'rr', metric].droplevel('indayidx')
-        nnm = results.loc[results['decoder'] == 'nn', metric].droplevel('indayidx')
+        nnm = results.loc[results['decoder'] == 'tcn', metric].droplevel('indayidx')
         dsm = results.loc[results['decoder'] == 'ds', metric].droplevel('indayidx')
+        rnm = results.loc[results['decoder'] == 'rnn', metric].droplevel('indayidx')
 
         rrnn_difference = np.mean((rrm - nnm)/rrm)
         rrds_difference = np.mean((rrm - dsm)/rrm)
@@ -343,19 +357,23 @@ def fits_offline_partII(results, mseax, klax):
         offlineFitResults['diff_rrds'].append(b)
         offlineFitResults['pval_rrds'].append(d.pvalue)
 
-    # Plot MSE over folds and over days
-    sns.barplot(data=results, x='decoder', y='mse', palette=config.offlinePalette,
-                hue_order=('rr','nn','ds'), ax=mseax, errorbar='se')
-    # Plot KL-Divergence over folds and over days
-    sns.barplot(data=results, x='decoder',y='kl_div',palette=config.offlinePalette,
-                hue_order=('rr','nn','ds'), ax=klax, errorbar='se')
+    # Plot Cross day KL
 
-    mseax.set(ylim=[0, .45], yticks=[0, 0.2, 0.4],title='B. Open-loop prediction error', ylabel='Mean-Squared Error',
-              xticklabels=['RR', 'DS', 'tcFNN'])
-    klax.set(ylim=[0, .45], yticks=[0, 0.2, 0.4], title='D. Decoder fit to true distribution', ylabel='KL-Divergence',
-             xticklabels=['RR', 'DS', 'tcFNN'])
+
+    # Plot MSE over folds and over days
+    sns.barplot(data=results, x='date', y='mse', hue='decoder', palette=config.offline_palette,
+                hue_order=config.offline_order, ax=mseax, alpha=0.6, errorbar='se', legend=False)
+    sns.stripplot(results, x='date', y='mse', hue='decoder', palette=config.offline_palette,
+                  hue_order=config.offline_order, dodge=True, ax=mseax, alpha=0.7, zorder=1)
+    # # Plot KL-Divergence over folds and over days
+    sns.barplot(data=results, x='date', y='kl_div', hue='decoder', palette=config.offline_palette,
+                hue_order=config.offline_order, ax=klax, alpha=0.6, errorbar='se', legend=False)
+    sns.stripplot(results, x='date', y='kl_div', hue='decoder', palette=config.offline_palette,
+                  hue_order=config.offline_order, dodge=True, ax=klax, alpha=0.7, zorder=1)
+
+    mseax.set(title='B. Open-loop prediction error', ylabel='Mean-Squared Error')
+    klax.set(title='D. Decoder fit to true distribution', ylabel='KL-Divergence')
 
     offlineFitResults = pd.DataFrame(offlineFitResults, index=metricstotest)
     offlineFitResults.to_csv(os.path.join(config.results_dir, 'fits_offline', 'offlineFitResults.csv'))
-
     return
