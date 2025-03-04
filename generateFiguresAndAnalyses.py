@@ -2,13 +2,15 @@ import pdb
 import pandas as pd
 import config
 from Analyses.fits_offline import fits_offline, fits_offline_partII
-from Analyses.fits_online import fits_online, fits_online_partII
+from Analyses.fits_online import fits_online, fits_online_partII, fits_online_w, fits_online_partII_w
 from Analyses.variance_offline import variance_offline, variance_offline_partII
 from Analyses.context_offline import context_offline, context_offline_partII
 from Analyses.variance_online import variance_online, variance_online_partII
 import os
 import pickle
 import matplotlib.pyplot as plt
+import sys
+sys.path.append("C:/Users/chesteklab/pybmi_development/pybmi")
 
 ## Offline Fit of Velocity Distribution ################################################################################
 run_section = False
@@ -17,8 +19,13 @@ if run_section:
     dates = ['2021-02-16',
              '2021-04-12',
              '2022-06-16',
-             '2022-09-06']
-    runs = [3, 3, 2, 3]
+             '2022-09-06',
+             ]
+    runlist = [#[3], 
+               [3], 
+               [2], 
+               [3],
+               ]
     run_part1 = True
     finalfig = None
     fignum = 1
@@ -26,12 +33,12 @@ if run_section:
         results = []
         for i in range(len(dates)):
             date = dates[i]
-            run = runs[i]
+            runs = runlist[i]
 
             genfig = i == fignum
 
-            metrics, fitfig, mseax, klax = fits_offline(mk_name, date, run, preprocess=False, train_rr=False,
-                                                        train_ds=False, train_tcn=True, train_rnn=False, genfig=genfig)
+            metrics, fitfig, mseax, klax = fits_offline(mk_name, date, runs, preprocess=False, train_rr=False,
+                                                        train_ds=False, train_nn=False, genfig=genfig)
             results.append(metrics)
 
             if genfig:
@@ -39,17 +46,17 @@ if run_section:
                 finalaxs = (mseax, klax)
 
         results = pd.concat(results, keys=dates, names = ['date','indayidx'], axis=0).set_index('fold', append=True)
-        with open(os.path.join(config.results_dir, 'fits_offline', f'offlineFitResults.pkl'), 'wb') as f:
+        with open(os.path.join(config.resultsdir, 'fits_offline', f'offlineFitResults_{mk_name}.pkl'), 'wb') as f:
             pickle.dump((results, finalfig, finalaxs), f)
     else:
-        with open(os.path.join(config.results_dir, 'fits_offline', f'offlineFitResults.pkl'), 'rb') as f:
+        with open(os.path.join(config.resultsdir, 'fits_offline', f'offlineFitResults_{mk_name}.pkl'), 'rb') as f:
             results, finalfig, finalaxs = pickle.load(f)
 
-    fits_offline_partII(results, finalaxs[0], finalaxs[1])
-    finalfig.savefig(os.path.join(config.results_dir, 'fits_offline', f'offlineFitFigure_{dates[fignum]}'))
+    fits_offline_partII(mk_name, results, finalaxs[0], finalaxs[1])
+    finalfig.savefig(os.path.join(config.resultsdir, 'fits_offline', f'offlineFitFigure_{dates[fignum]}_{mk_name}.pdf'))
 
 # Online Velocity Distribution Comparisons #############################################################################
-run_section = True
+run_section = False
 if run_section:
     mk_name = 'Joker'
     dates = ['2020-09-12',
@@ -65,14 +72,14 @@ if run_section:
     kldivs= []
     finalfig = None
     finalax = None
+    fignum = 2
     
-
     results = []
     for i, (date, run, dclabs, off2) in enumerate(zip(dates, runs, decoderlabels, offby2)):
-        genfig = i == 2
+        genfig = i == fignum
 
-        kldiv, ax, distaxs, fig, metrics = fits_online(mk_name, date, run, dclabs, offby2=off2,
-                                              preprocess=True)
+        kldiv, ax, distaxs, fig, metrics = fits_online(config.serverpath, mk_name, date, run, dclabs, offby2=off2,
+                                              preprocess=False)
         kldivs.append(kldiv)
 
         results.append(metrics)
@@ -84,14 +91,15 @@ if run_section:
     results = pd.concat(results, keys=dates, names=['date', 'indayidx']).reset_index()
     kldivs = pd.concat(kldivs, keys=dates, names=['date'],axis=0).reset_index().drop('level_1',axis=1)
 
-    fits_online_partII(kldivs, finalax, results)
-    finalfig.savefig(os.path.join(config.results_dir,'fits_online',f'onlineFitFigure_{dates[0]}.pdf'))
+    fits_online_partII(mk_name, kldivs, finalax, results)
+    finalfig.savefig(os.path.join(config.resultsdir,'fits_online',f'onlineFitFigure_{dates[fignum]}_{mk_name}.pdf'))
 
 # Offline tcFNN Training Variance ######################################################################################
 run_section = False
 
 # take four days of offline data - same days as used for offline fit section
 if run_section:
+    mk_name = 'Joker'
     dates = ['2021-02-16','2021-04-12', '2022-06-16', '2022-09-06']
     genfig = [False, True, False, False]
     fig = None
@@ -109,7 +117,7 @@ if run_section:
     # run the analysis for each day
     for date, gfig in zip(dates, genfig):
         #run variance offline analysis with standard data
-        varfig, axs, metrics, hist, std_dev = variance_offline(date, gfig, train_models=False, calculate_results=False)
+        varfig, axs, metrics, hist, std_dev = variance_offline(mk_name, date, gfig, train_models=False, calculate_results=True)
         if gfig:
             axes = axs
             fig = varfig
@@ -118,7 +126,7 @@ if run_section:
         sds.append(std_dev)
 
         #run  variance offline analysis with normalized data
-        varfig, axs, metrics, hist, std_dev = variance_offline(date, gfig, train_models=False, calculate_results=False, normalize_data=True)
+        varfig, axs, metrics, hist, std_dev = variance_offline(mk_name, date, gfig, train_models=False, calculate_results=True, normalize_data=True)
         if gfig:
             axes_n = axs
             fig_n = varfig
@@ -129,11 +137,11 @@ if run_section:
     #concatenate all the metrics for each model (MSE, VAF, Corr, etc) and save
     results = pd.concat(results, keys=dates, names=['date', 'indayidx'], axis=0)
     results_n = pd.concat(results_n, keys=dates, names=['date', 'indayidx'], axis=0)
-    variance_offline_partII(axes, results, hists, sds, normalize_data=False)
-    variance_offline_partII(axes_n, results_n, hists_n, sds_n, normalize_data=True)
+    variance_offline_partII(mk_name, axes, results, hists, sds, normalize_data=False)
+    variance_offline_partII(mk_name, axes_n, results_n, hists_n, sds_n, normalize_data=True)
 
-    fig.savefig(os.path.join(config.resultsdir, 'variance_offline','offline_variance_figure.pdf'))
-    fig_n.savefig(os.path.join(config.resultsdir, 'variance_offline','offline_variance_NORM_figure.pdf'))
+    fig.savefig(os.path.join(config.resultsdir, 'variance_offline', f'offline_variance_figure_{mk_name}.pdf'))
+    fig_n.savefig(os.path.join(config.resultsdir, 'variance_offline', f'offline_variance_NORM_figure_{mk_name}.pdf'))
     plt.show()
 
 # Online tcFNN Training Variance #######################################################################################
@@ -172,7 +180,7 @@ if run_section:
 run_section = False
 
 if run_section:
-    firstpart = False
+    firstpart = True
     if firstpart:
         results = []
         mk_name = 'Joker'
@@ -193,15 +201,155 @@ if run_section:
                   ['SprWrst', 'Wrist', 'Normal', 'Spring']]
 
         for date, run, label in zip(dates, runs, labels):
-            metrics = context_offline(mk_name, date, run, label,
-                                      preprocess=False, train_rr=False, train_tcn=False, train_rnn=False)
+            metrics = context_offline(config.serverpath, mk_name, date, run, label,
+                                                      preprocess=False, train_rr=False, train_nn=False)
             results.append(metrics)
 
         results = pd.concat(results, axis=0).reset_index()
-        results.to_csv(os.path.join(config.results_dir, 'context_offline','resultsAlldays.csv'))
-        with open(os.path.join(config.results_dir, 'context_offline', f'contextResults.pkl'), 'wb') as f:
+        results.to_csv(os.path.join(config.resultsdir, 'context_offline','resultsAlldays.csv'))
+        with open(os.path.join(config.resultsdir, 'context_offline', f'contextResults.pkl'), 'wb') as f:
             pickle.dump(results, f)
     else:
-        with open(os.path.join(config.results_dir, 'context_offline', f'contextResults.pkl'), 'rb') as f:
+        with open(os.path.join(config.resultsdir, 'context_offline', f'contextResults.pkl'), 'rb') as f:
             results = pickle.load(f)
-    context_offline_partII(results, '2023-04-11')
+    context_offline_partII(results, '2022-06-02')
+
+plt.show()
+
+## Repeat analyses for Wayne ###########################################################################################
+
+## Offline Fit of Velocity Distribution ################################################################################
+run_section = False
+if run_section:
+    mk_name = 'Batman'
+    dates = ['2020-11-21', 
+             '2020-12-05',
+             '2020-12-08',
+             '2020-12-23',
+             ]
+    runlist = [[3,13],
+               [3],
+               [3],
+               [4],
+               ]
+    run_part1 = True
+    finalfig = None
+    fignum = 1
+    if run_part1:
+        results = []
+        for i in range(len(dates)):
+            date = dates[i]
+            runs = runlist[i]
+
+            genfig = i == fignum
+
+            metrics, fitfig, mseax, klax = fits_offline(mk_name, date, runs, preprocess=False, train_rr=False,
+                                                        train_ds=False, train_nn=False, genfig=genfig)
+            results.append(metrics)
+
+            if genfig:
+                finalfig = fitfig
+                finalaxs = (mseax, klax)
+
+        results = pd.concat(results, keys=dates, names = ['date','indayidx'], axis=0).set_index('fold', append=True)
+        with open(os.path.join(config.resultsdir, 'fits_offline', f'offlineFitResults_{mk_name}.pkl'), 'wb') as f:
+            pickle.dump((results, finalfig, finalaxs), f)
+    else:
+        with open(os.path.join(config.resultsdir, 'fits_offline', f'offlineFitResults_{mk_name}.pkl'), 'rb') as f:
+            results, finalfig, finalaxs = pickle.load(f)
+
+    fits_offline_partII(mk_name, results, finalaxs[0], finalaxs[1])
+    finalfig.savefig(os.path.join(config.resultsdir, 'fits_offline', f'offlineFitFigure_{dates[fignum]}_{mk_name}.pdf'))
+
+# Online Velocity Distribution Comparisons #############################################################################
+run_section = True
+if run_section:
+    mk_name = 'Batman'
+    dates = ['2020-11-21',
+             '2020-12-08',
+             '2020-12-23'] #add another opt day
+    runs = [[3, 5, 8, 12, 13],
+            [3, 7, 9, 10],
+            [4, 5, 6, 10, 11]]
+    decoderlabels = [['HC', 'NN', 'RN', 'RN', 'HC'], 
+                     ['HC', 'RK', 'NN', 'RK'],
+                     ['HC', 'HC', 'NN', 'NN', 'RN']]
+    offby2 = [True, True, True]
+    kldivs= []
+    finalfig = None
+    finalax = None
+    fignum = 0
+
+    results = []
+    
+    for i, (date, run, dclabs, off2) in enumerate(zip(dates, runs, decoderlabels, offby2)):
+        genfig = i == fignum
+
+        kldiv, ax, distaxs, fig, metrics = fits_online_w(config.serverpath, mk_name, date, run, dclabs, offby2=off2,
+                                              preprocess=False, genfig=genfig)
+        kldivs.append(kldiv)
+
+        results.append(metrics)
+        if genfig:
+            finalfig = fig
+            finalax = (ax, distaxs)
+        else:
+            plt.close(fig)
+    results = pd.concat(results, keys=dates, names=['date', 'indayidx']).reset_index()
+    kldivs = pd.concat(kldivs, keys=dates, names=['date'],axis=0).reset_index().drop('level_1',axis=1)
+
+    fits_online_partII_w(mk_name, kldivs, finalax, results)
+    finalfig.savefig(os.path.join(config.resultsdir,'fits_online',f'onlineFitFigure_{mk_name}.pdf'))
+    
+
+# Offline tcFNN Training Variance ######################################################################################
+run_section = False
+
+# take four days of offline data - same days as used for offline fit section
+if run_section:
+    mk_name = 'Batman'
+    dates = ['2020-11-21', '2020-12-08', '2020-12-23']
+    genfig = 2
+    fig = None
+    axes = None
+    results = []
+    hists = []
+    sds = []
+
+    fig_n = None
+    axes_n = None
+    results_n = []
+    hists_n = []
+    sds_n = []
+
+    # run the analysis for each day
+    for i, date in enumerate(dates):
+        gfig = i == genfig
+
+        #run variance offline analysis with standard datas
+        varfig, axs, metrics, hist, std_dev = variance_offline(mk_name, date, gfig, train_models=False, calculate_results=True)
+        if gfig:
+            axes = axs
+            fig = varfig
+        results.append(metrics)
+        hists.append(hist)
+        sds.append(std_dev)
+
+        #run  variance offline analysis with normalized data
+        varfig, axs, metrics, hist, std_dev = variance_offline(mk_name, date, gfig, train_models=False, calculate_results=True, normalize_data=True)
+        if gfig:
+            axes_n = axs
+            fig_n = varfig
+        results_n.append(metrics)
+        hists_n.append(hist)
+        sds_n.append(std_dev)
+
+    #concatenate all the metrics for each model (MSE, VAF, Corr, etc) and save
+    results = pd.concat(results, keys=dates, names=['date', 'indayidx'], axis=0)
+    results_n = pd.concat(results_n, keys=dates, names=['date', 'indayidx'], axis=0)
+    variance_offline_partII(mk_name, axes, results, hists, sds, normalize_data=False)
+    variance_offline_partII(mk_name, axes_n, results_n, hists_n, sds_n, normalize_data=True)
+
+    fig.savefig(os.path.join(config.resultsdir, 'variance_offline', f'offline_variance_figure_{mk_name}_{dates[genfig]}.pdf'))
+    fig_n.savefig(os.path.join(config.resultsdir, 'variance_offline', f'offline_variance_NORM_figure_{mk_name}_{dates[genfig]}.pdf'))
+    plt.show()

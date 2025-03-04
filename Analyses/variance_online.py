@@ -36,12 +36,12 @@ def variance_online(serverpath, mk_name, date, runs, decoderlabels,
 
         z_all = pd.concat(zlist, axis=0) #concatenate list into one large dataframe
         z_all = z_all.reset_index()
-        z_all.to_pickle(os.path.join(config.data_dir, 'variance_online', f'data_{date}.pkl'))
+        z_all.to_pickle(os.path.join(config.datadir, 'variance_online', f'data_{date}.pkl'))
         print('data saved')
 
     else:
         ## Load in saved data
-        z_all = pd.read_pickle(os.path.join(config.data_dir, 'variance_online', f'data_{date}.pkl'))
+        z_all = pd.read_pickle(os.path.join(config.datadir, 'variance_online', f'data_{date}.pkl'))
         print('data loaded')
 
     # Column 2 Bottom and Column 3: Online Performance Metrics
@@ -51,7 +51,7 @@ def variance_online(serverpath, mk_name, date, runs, decoderlabels,
     clMetrics['Run'] = z_all['Run']
     clMetrics['Decoder'] = z_all['Decoder']
     clMetrics['TrialSuccess'] = z_all['TrialSuccess'].astype(bool)
-    clMetrics.to_pickle(os.path.join(config.results_dir, 'variance_online', f'onlinevariancemetrics_{date}.pkl'))
+    clMetrics.to_pickle(os.path.join(config.resultsdir, 'variance_online', f'onlinevariancemetrics_{date}.pkl'))
 
     return clMetrics
 
@@ -88,13 +88,13 @@ def variance_online_partII(results):
     axs[0, 1].set(title='One tcFNN tested in succession', ylabel=None, xticklabels=[], yticklabels=[], xlabel=None)
     axs[1, 1].set(ylabel=None, yticklabels=[])
     # save figure
-    onlineVarFig.savefig(os.path.join(config.results_dir, 'variance_online', 'onlineVarFigure.pdf'))
+    onlineVarFig.savefig(os.path.join(config.resultsdir, 'variance_online', 'onlineVarFigure.pdf'))
 
     # prep trial by trial results for nested anova (Luis' analysis)
     results_df = pd.concat(results)
     results_df["Day"] = results_df['Day'].astype('category')
     results_df["Run"] = results_df['Run'].astype('category')
-    results_df.to_csv(os.path.join(config.results_dir, 'variance_online', 'metrics_successful_full.csv'))
+    results_df.to_csv(os.path.join(config.resultsdir, 'variance_online', 'metrics_successful_full.csv'))
 
     # then, run nested_anova.R
 
