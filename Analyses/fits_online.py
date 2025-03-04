@@ -19,50 +19,26 @@ def fits_online(serverpath, mk_name, date, runs, decoderlabels, trimlength = 5, 
     if preprocess: # preprocess here is pretty light, just loading/creating z structs and saving them.
         # run through each day, load the runs, get z structs as dataframes, append to list. then, concatenate into
         # one large dataframe and save it out.
-        if mk_name == 'Joker':
-            zlist = []
-            for i in np.arange(len(runs)):
-                run = 'Run-{}'.format(str(runs[i]).zfill(3))
-                fpath = os.path.join(serverpath, mk_name, date, run)
+        zlist = []
+        for i in np.arange(len(runs)):
+            run = 'Run-{}'.format(str(runs[i]).zfill(3))
+            fpath = os.path.join(serverpath, mk_name, date, run)
 
-                z = ZStructTranslator(fpath, numChans=96, verbose=True)
-                z = z.asdataframe()
-                if decoderlabels[i] != 'HC': # if not a hand control run, filter by only decoder on trials.
-                    z = z[z['ClosedLoop'] == True] #make sure decode is on as well
-                z = z[trimlength:]
-                z = z[z['TrialSuccess'] == True] # filter out unsuccessful trials
-                z = z[z['BlankTrial'] == False] # remove blank trial
+            z = ZStructTranslator(fpath, numChans=96, verbose=True)
+            z = z.asdataframe()
+            if decoderlabels[i] != 'HC': # if not a hand control run, filter by only decoder on trials.
+                z = z[z['ClosedLoop'] == True] #make sure decode is on as well
+            z = z[trimlength:]
+            z = z[z['TrialSuccess'] == True] # filter out unsuccessful trials
+            z = z[z['BlankTrial'] == False] # remove blank trial
 
-                z['Decoder'] = decoderlabels[i] # add decoder label to dataframe
-                z['Run'] = run
-                zlist.append(z)
-            z_all = pd.concat(zlist, axis=0) #concatenate list into one large dataframe
-            z_all = z_all.reset_index()
-            z_all.to_pickle(os.path.join(config.datadir, 'fits_online', f'data_{date}_{mk_name}.pkl'))
-            print('data saved')
-        else:
-            zlist = []
-            for i in np.arange(len(date)):
-                for j in np.arange(len(runs[i])):
-                    run = 'Run-{}'.format(str(runs[i][j]).zfill(3))
-                    fpath = os.path.join(serverpath, mk_name, date[i], run)
-                    print(fpath)
-
-                    z = ZStructTranslator(fpath, numChans=96, verbose=True)
-                    z = z.asdataframe()
-                    if decoderlabels[i][j] != 'HC': # if not a hand control run, filter by only decoder on trials.
-                        z = z[z['ClosedLoop'] == True] #make sure decode is on as well
-                    z = z[trimlength:]
-                    z = z[z['TrialSuccess'] == True] # filter out unsuccessful trials
-                    z = z[z['BlankTrial'] == False] # remove blank trial
-
-                    z['Decoder'] = decoderlabels[i][j] # add decoder label to dataframe
-                    z['Run'] = run
-                    zlist.append(z)
-            z_all = pd.concat(zlist, axis=0) #concatenate list into one large dataframe
-            z_all = z_all.reset_index()
-            z_all.to_pickle(os.path.join(config.datadir, 'fits_online', f'data_{mk_name}.pkl'))
-            print('data saved')
+            z['Decoder'] = decoderlabels[i] # add decoder label to dataframe
+            z['Run'] = run
+            zlist.append(z)
+        z_all = pd.concat(zlist, axis=0) #concatenate list into one large dataframe
+        z_all = z_all.reset_index()
+        z_all.to_pickle(os.path.join(config.datadir, 'fits_online', f'data_{date}_{mk_name}.pkl'))
+        print('data saved')
     else:
         ## Load in saved data
         z_all = pd.read_pickle(os.path.join(config.datadir, 'fits_online', f'data_{date}_{mk_name}.pkl'))
@@ -149,10 +125,7 @@ def fits_online(serverpath, mk_name, date, runs, decoderlabels, trimlength = 5, 
     (tt, rt, ot) = online_metrics.calcTrialTimes(z_all, offBy2=offby2)
     clMetrics = pd.DataFrame(data={'TimeToTarget': rt, 'OrbitTime': ot})
     clMetrics['Decoder'] = z_all['Decoder']
-    if mk_name == 'Joker':
-        clMetrics.to_pickle(os.path.join(config.resultsdir, 'fits_online', f'onlinefitmetrics_{date}_{mk_name}.pkl'))
-    else:
-        clMetrics.to_pickle(os.path.join(config.resultsdir, 'fits_online', f'onlinefitmetrics_{mk_name}.pkl'))
+    clMetrics.to_pickle(os.path.join(config.resultsdir, 'fits_online', f'onlinefitmetrics_{date}_{mk_name}.pkl'))
 
     kldivs = pd.DataFrame(data=kldivs)
     kldivs.to_pickle(os.path.join(config.resultsdir, 'fits_online', f'onlinefitdivs_{date}_{mk_name}.pkl'))
