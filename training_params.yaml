@@ -2,6 +2,7 @@ TCN:
   learning_rate: 1e-4
   weight_decay: 1e-2
   max_epoch: 10
+  max_epoch_norm: 15
   use_scheduler: False
   scheduler_update: 0
   scheduler_patience: 0
@@ -14,6 +15,7 @@ TCN_nodp:
   learning_rate: 1e-4
   weight_decay: 1e-2
   max_epoch: 10
+  max_epoch_norm: 15
   use_scheduler: False
   scheduler_update: 0
   scheduler_patience: 0
@@ -26,6 +28,7 @@ TCN_nobn:
   learning_rate: 1e-4
   weight_decay: 1e-2
   max_epoch: 80
+  max_epoch_norm: 15
   use_scheduler: False
   scheduler_update: 0
   scheduler_patience: 0
@@ -38,6 +41,7 @@ TCN_noreg:
   learning_rate: 1e-4
   weight_decay: 1e-2
   max_epoch: 80
+  max_epoch_norm: 15
   use_scheduler: False
   scheduler_update: 0
   scheduler_patience: 0

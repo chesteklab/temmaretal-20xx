@@ -278,7 +278,7 @@ def calcVelocityDistribution(z, z_hc=None, plotResults=True, binrange=(-1,1),num
             binedges_hc = None
 
         hist, binedges, _ = ax.hist(v.flatten(), bins=numbins, range=binrange, density=True, histtype='step',
-                                 label=label,color=color, linewidth = 2)
+                                 label=label,color=color, linewidth = 4)
         ax.legend()
         ax.set_title('Velocity Distribution plot')
         ax.set_ylabel('Estimated Density')
