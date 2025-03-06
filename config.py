@@ -44,7 +44,6 @@ offlineVariancePalette = {'hc':hcColor, 'tcfnn':tcnColor, 'nodp':nodpColor,
                           'nobn':nobnColor, 'noreg':noregColor}
 
 variance_models = ('TCN', 'TCN_nobn', 'TCN_nodp', 'TCN_noreg')
-variance_models_test = ('tcfnn', 'nobn', 'nodp', 'noreg')
 varianceLabels = ('tcfnn', 'dropout only (noBN)', 'batchnorm only (noDP)', 'noReg')
 varianceTicks = ('tcFNN', 'noBN', 'noDP', 'noReg')
 

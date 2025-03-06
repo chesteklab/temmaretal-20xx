@@ -73,7 +73,7 @@ def variance_offline(mk_name, date, genfig, train_models=True, calculate_results
         # models for main figure
         for i in range(num_models):
             # define keys and decoders to use
-            keys = config.variance_models_test
+            keys = config.variance_models
             decoders = (nn_decoders.TCN, nn_decoders.TCNNoBN, nn_decoders.TCNNoDP, nn_decoders.TCNNoReg)
 
             # train two models each for the 4 types, one on normal data, one on normalized data
@@ -119,7 +119,7 @@ def variance_offline(mk_name, date, genfig, train_models=True, calculate_results
     sec = 1000
     vel_test = vel_test.cpu().detach().numpy()/config.binsize * sec
 
-    keys = config.variance_models_test
+    keys = config.variance_models
     predictions = {}
     metrics = {'decoder':[], 'mse':[]}
     std_dev = {}
@@ -209,7 +209,7 @@ def variance_offline(mk_name, date, genfig, train_models=True, calculate_results
 
 def variance_offline_partII(mk_name, axs, metrics, history, std_dev, normalize_data=False):
     hist_ax, mse_ax, sd_ax = axs
-    keys = config.variance_models_test
+    keys = config.variance_models
     lineargs = {'alpha': 1, 'lw': 1.5}
     average_std_dev = {'decoder':[],'average sd':[], 'sds':[], 'se_median':[]}
     sdd = []

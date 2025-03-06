@@ -10,7 +10,6 @@ import os
 import pickle
 import matplotlib.pyplot as plt
 import sys
-sys.path.append("C:/Users/chesteklab/pybmi_development/pybmi")
 
 ## Offline Fit of Velocity Distribution ################################################################################
 run_section = True
