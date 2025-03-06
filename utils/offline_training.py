@@ -255,7 +255,7 @@ def train_nn(train_neu, train_vel, model_class, model_type, normalize=True):
     return model, scaler, (val_losses, train_losses, loss_iters), (neu_mean, neu_std, vel_mean, vel_std)
 
 # Basic Fit Function for forward/backprop dependent models
-def fit(model, model_type, opt, scheduler, dl, val_dl, scaler_used=True):
+def fit(model, model_type, opt, scheduler, dl, val_dl, scaler_used=True, normalized=False):
     loss_fn = torch.nn.MSELoss()
     train_losses = []
     val_losses = []
@@ -268,8 +268,13 @@ def fit(model, model_type, opt, scheduler, dl, val_dl, scaler_used=True):
         scheduler_update = training_params['scheduler_update']
         min_lr = float(training_params['learning_rate'])/training_params['num_lr_steps']
 
+    if normalized:
+        max_epoch = training_params['max_epoch_norm']
+    else:
+        max_epoch = training_params['max_epoch']
+
     iter = 0
-    for epoch in range(training_params['max_epoch']):
+    for epoch in range(max_epoch):
         epoch_train_losses = []
         for x, y in dl:
             model.train()
@@ -316,7 +321,7 @@ def fit(model, model_type, opt, scheduler, dl, val_dl, scaler_used=True):
                 if opt.param_groups[0]['lr'] < float(min_lr):
                     print(f'scheduler stop, final result:')
                     print('Epoch [{}/{}], iter {} Validation Loss: {:.4f}'.format(epoch, 
-                                                                                  training_params['max_epoch'] - 1, 
+                                                                                  max_epoch - 1, 
                                                                                   iter,
                                                                                   val_loss.item()))
                     val_losses.append(val_loss.item())

@@ -12,8 +12,7 @@ from utils.ztools import ZStructTranslator
 from utils import offline_metrics
 from utils import online_metrics
 
-
-def fits_online(serverpath, mk_name, date, runs, decoderlabels, trimlength = 5, offby2=False, preprocess=True):
+def fits_online(mk_name, date, runs, decoderlabels, trimlength = 5, offby2=False, preprocess=True):
 
     # load data from days - Including HC data. filter trials and separate runs by decoder
     if preprocess: # preprocess here is pretty light, just loading/creating z structs and saving them.
@@ -22,9 +21,9 @@ def fits_online(serverpath, mk_name, date, runs, decoderlabels, trimlength = 5, 
         zlist = []
         for i in np.arange(len(runs)):
             run = 'Run-{}'.format(str(runs[i]).zfill(3))
-            fpath = os.path.join(serverpath, mk_name, date, run)
+            fpath = os.path.join(config.raw_data_dir, mk_name, date, run)
 
-            z = ZStructTranslator(fpath, numChans=96, verbose=True)
+            z = ZStructTranslator(fpath, os.path.join(config.data_dir, 'fits_online'), numChans=96, verbose=True)
             z = z.asdataframe()
             if decoderlabels[i] != 'HC': # if not a hand control run, filter by only decoder on trials.
                 z = z[z['ClosedLoop'] == True] #make sure decode is on as well
@@ -37,11 +36,11 @@ def fits_online(serverpath, mk_name, date, runs, decoderlabels, trimlength = 5, 
             zlist.append(z)
         z_all = pd.concat(zlist, axis=0) #concatenate list into one large dataframe
         z_all = z_all.reset_index()
-        z_all.to_pickle(os.path.join(config.datadir, 'fits_online', f'data_{date}_{mk_name}.pkl'))
+        z_all.to_pickle(os.path.join(config.data_dir, 'fits_online', f'data_{date}_{mk_name}.pkl'))
         print('data saved')
     else:
         ## Load in saved data
-        z_all = pd.read_pickle(os.path.join(config.datadir, 'fits_online', f'data_{date}_{mk_name}.pkl'))
+        z_all = pd.read_pickle(os.path.join(config.data_dir, 'fits_online', f'data_{date}_{mk_name}.pkl'))
         print('data loaded')
 
     # Figure Setup - Create figure and Subfigures
@@ -78,14 +77,14 @@ def fits_online(serverpath, mk_name, date, runs, decoderlabels, trimlength = 5, 
     # posaxs[1].get_legend().legend_handles[0].set(edgecolor='k',facecolor=None)
     posaxs[2].set(xlabel='Time (sec)')
 
-    for ax,color in zip(posaxs, [config.hcColor, config.kfColor, config.nnColor]):
+    for ax,color in zip(posaxs, [config.hcColor, config.kfColor, config.tcnColor]):
         [i.set_linewidth(2) for i in ax.spines.values()]
         [i.set_edgecolor(color) for i in ax.spines.values()]
 
     # Per day, plot velocity distributions with broken axes, and calculate the KL divergence
     porder = (z_RK, z_RN)
     labels = ('RK', 'RN')
-    palette = (config.kfColor, config.nnColor)
+    palette = (config.kfColor, config.tcnColor)
     kldivs = {'div':[], 'Decoder':[], 'counts':[], 'hc_counts':[]}
     for i, (zi, colors, decoder) in enumerate(zip(porder, palette, labels)):
         # top plot
@@ -125,10 +124,10 @@ def fits_online(serverpath, mk_name, date, runs, decoderlabels, trimlength = 5, 
     (tt, rt, ot) = online_metrics.calcTrialTimes(z_all, offBy2=offby2)
     clMetrics = pd.DataFrame(data={'TimeToTarget': rt, 'OrbitTime': ot})
     clMetrics['Decoder'] = z_all['Decoder']
-    clMetrics.to_pickle(os.path.join(config.resultsdir, 'fits_online', f'onlinefitmetrics_{date}_{mk_name}.pkl'))
+    clMetrics.to_pickle(os.path.join(config.results_dir, 'fits_online', f'onlinefitmetrics_{date}_{mk_name}.pkl'))
 
     kldivs = pd.DataFrame(data=kldivs)
-    kldivs.to_pickle(os.path.join(config.resultsdir, 'fits_online', f'onlinefitdivs_{date}_{mk_name}.pkl'))
+    kldivs.to_pickle(os.path.join(config.results_dir, 'fits_online', f'onlinefitdivs_{date}_{mk_name}.pkl'))
     return kldivs, metricaxs, dist_tops, onlinefitfig, clMetrics
 
 def fits_online_partII(mk_name, kldivs, ax, results):
@@ -161,13 +160,13 @@ def fits_online_partII(mk_name, kldivs, ax, results):
         day_summaries.append(pd.concat((tt,ot,orb),keys=('TT','OT','OR'),axis=1))
 
     
-    kldivs.to_csv(os.path.join(config.resultsdir, 'fits_online', f'kl_divs_w_counts_{mk_name}.csv'))
+    kldivs.to_csv(os.path.join(config.results_dir, 'fits_online', f'kl_divs_w_counts_{mk_name}.csv'))
     kldivs = kldivs.pivot(index='date',columns='Decoder',values='div').rename(columns={'RN':'div_RN','RK':'div_RK'})
     day_summaries = pd.concat(day_summaries, axis=0, keys=kldivs.index)
 
     # save results
-    day_summaries.to_csv(os.path.join(config.resultsdir, 'fits_online', f'online_fit_results_{mk_name}.csv'))
-    kldivs.to_csv(os.path.join(config.resultsdir, 'fits_online', f'kl_divs_{mk_name}.csv'))
+    day_summaries.to_csv(os.path.join(config.results_dir, 'fits_online', f'online_fit_results_{mk_name}.csv'))
+    kldivs.to_csv(os.path.join(config.results_dir, 'fits_online', f'kl_divs_{mk_name}.csv'))
 
     # do stats across days
     def runttest_ind(results, metric, althypo):
@@ -198,7 +197,7 @@ def fits_online_partII(mk_name, kldivs, ax, results):
                           'std':[0,0]})
     
     crossdayresults = pd.concat((tt_output, ot_output, op_df), keys=['tt','ot','or'])
-    crossdayresults.to_csv(os.path.join(config.resultsdir, 'fits_online', f'cross_day_metrics_{mk_name}.csv'))
+    crossdayresults.to_csv(os.path.join(config.results_dir, 'fits_online', f'cross_day_metrics_{mk_name}.csv'))
     
     # difference of proportions test
     # null hypothesis, 0 difference in proportion
@@ -211,7 +210,7 @@ def fits_online_partII(mk_name, kldivs, ax, results):
 
     #consolidate and save results
     statsout = pd.Series(data={'RN TT < RK TT':tt_test.pvalue, 'RN OT != RK OT':ot_test.pvalue, 'RN OR > RK OR':pval})
-    statsout.to_csv(os.path.join(config.resultsdir,'fits_online',f'stats_{mk_name}.csv'))
+    statsout.to_csv(os.path.join(config.results_dir,'fits_online',f'stats_{mk_name}.csv'))
 
     # PLOTTING
     # add average kl-div across days to distribution plots
@@ -223,24 +222,73 @@ def fits_online_partII(mk_name, kldivs, ax, results):
                 transform=distax[0].transAxes, fontsize=mpl.rcParams['axes.labelsize'], ha='center')
     distax[1].text(textpos[0], textpos[1], f"Mean KL-div from HC:\n {klmeans.iloc[1]:.2f} +/- {klstds.iloc[1]:.2f}",
                 transform=distax[1].transAxes, fontsize=mpl.rcParams['axes.labelsize'], ha='center')
-
+    
+    
+    #Shows horizontal bars with day means
     # bar plots for time to target, orbiting rate, nonzero orbiting time
-    sns.barplot(results.where(results['TimeToTarget'] != 0), x='TimeToTarget', y='Decoder', errorbar='se', ax=metricax[0],
-                palette=config.onlinePalette[[0, 2, 1], :])
-    sns.barplot(orbit_props.reset_index(), x=0, y='Decoder', ax=metricax[1],
-                palette=config.onlinePalette[[0, 2, 1], :], order=['HC', 'RN', 'RK'])
-    sns.barplot(results.where(results['OrbitTime'] != 0), x='OrbitTime', y='Decoder', errorbar='se', ax=metricax[2],
-                palette=config.onlinePalette[[0, 2, 1], :])
+    sns.barplot(results[results['TimeToTarget'] != 0], x='TimeToTarget', y='Decoder', errorbar='se', ax=metricax[0], 
+                palette=config.online_palette[[0, 2, 1], :], alpha=0.6, errcolor='black')
+    sns.stripplot(results[results['TimeToTarget'] != 0], x='TimeToTarget', y='Decoder', 
+                  palette=config.online_palette[[0, 2, 1], :], ax=metricax[0], alpha=0.7, zorder=1, size=4)
+    """
+    # Code for plotting day means
+    day_means = results[results['TimeToTarget'] != 0].groupby(['date', 'Decoder'], as_index=False)['TimeToTarget'].mean()
+    sns.scatterplot(data=day_means, x='TimeToTarget', y='Decoder', hue='Decoder', palette=config.online_palette[[0, 1, 2], :], 
+                    ax=metricax[0], alpha = .7, edgecolor = 'none', zorder=2)
+    """
+
+    # Bar plot for Orbiting Rate
+    sns.barplot(data=orbit_props.reset_index(), x=0, y='Decoder', 
+                ax=metricax[1], palette=config.online_palette[[0, 2, 1], :], alpha=1)
+
+    sns.barplot(results[results['OrbitTime'] > 0], x='OrbitTime', y='Decoder', errorbar='se', ax=metricax[2], errcolor='black',
+                palette=config.online_palette[[0, 2, 1], :], alpha=0.6)
+    sns.stripplot(results[results['OrbitTime'] != 0], x='OrbitTime', y='Decoder', 
+                  palette=config.online_palette[[0, 2, 1], :], ax=metricax[2], alpha=0.7, size=4, zorder=1)
 
     # plot settings
-    metricax[0].set(title='Time-to-target', ylabel=None, xlabel='Time (s)', xlim=(0, 1500),
-                xticks=[0, 750, 1500], xticklabels=[0, .75, 1.5])
-    metricax[1].set(title='Orbiting rate', ylabel=None, xlabel='Proportion',
-            xticks=[0, .5, 1])
-    metricax[2].set(title='Nonzero orbit time', ylabel=None, xlabel='Time (s)', xlim=(0, 1500),
-                    xticks=[0, 750, 1500], xticklabels=[0, .75, 1.5])
+    metricax[0].set(title='Time-to-target', ylabel='Decoder', xlabel='Time (s)',# xlim=(0, 1500),
+                xticks=[0, 750, 1500], xticklabels=[0, .75, 1.5], yticklabels = ['HC', 'RN', 'RK'])
+
+    metricax[1].set(title='Orbiting rate', ylabel='Decoder', xlabel='Proportion',
+            xticks=[0, .5, 1], yticklabels = ['HC', 'RN', 'RK'])
+
+    metricax[2].set(title='Nonzero orbit time', ylabel='Decoder', xlabel='Time (s)', xlim=(0, 7000),
+                    xticks=[0, 3500, 7000], xticklabels=[0, 3.5, 7], yticklabels = ['HC', 'RN', 'RK'])
+    """
+
+    # bar plots for time to target, orbiting rate, nonzero orbiting time
+    sns.barplot(results[results['TimeToTarget'] != 0], x='Decoder', y='TimeToTarget', errorbar='se', ax=metricax[0], 
+                palette=config.online_palette[[0, 2, 1], :], alpha=0.6)
+    day_means = results[results['TimeToTarget'] != 0].groupby(['date', 'Decoder'], as_index=False)['TimeToTarget'].mean()
+    sns.scatterplot(data=day_means, x='Decoder', y='TimeToTarget', hue='Decoder', palette=config.online_palette[[0, 1, 2], :], 
+                    ax=metricax[0], alpha = .7, edgecolor = 'none', zorder=2)
+
+    #sns.stripplot(results[results['TimeToTarget'] != 0], x='TimeToTarget', y='Decoder', 
+    #              palette=config.online_palette[[0, 2, 1], :], ax=metricax[0], alpha=0.7, zorder=1)
+
+    # Bar plot for Orbiting Rate
+    sns.barplot(data=orbit_props.reset_index(), y=0, x='Decoder', 
+                ax=metricax[1], palette=config.online_palette[[0, 2, 1], :], alpha=0.6)
+
+    sns.barplot(results[results['OrbitTime'] > 0], y='OrbitTime', x='Decoder', errorbar='se', ax=metricax[2], 
+                palette=config.online_palette[[0, 2, 1], :], alpha=0.6)
+    sns.stripplot(results[results['OrbitTime'] != 0], y='OrbitTime', x='Decoder', 
+                  palette=config.online_palette[[0, 2, 1], :], ax=metricax[2], alpha=0.7, zorder=1)
+
+    # plot settings
+    metricax[0].set(title='Time-to-target', xlabel='Decoder', ylabel='Time (s)', ylim=(0, 1500),
+                yticks=[0, 750, 1500], yticklabels=[0, .75, 1.5], xticklabels = ['HC', 'RN', 'RK'])
+    metricax[0].get_legend().remove()
+
+    metricax[1].set(title='Orbiting rate', xlabel='Decoder', ylabel='Proportion',
+            yticks=[0, .5, 1], xticklabels = ['HC', 'RN', 'RK'])
+
+    metricax[2].set(title='Nonzero orbit time', xlabel='Decoder', ylabel='Time (s)', ylim=(0, 7000),
+                    yticks=[0, 3500, 7000], yticklabels=[0, 3.5, 7], xticklabels = ['HC', 'RN', 'RK'])
+    """
         
-def fits_online_w(serverpath, mk_name, date, runs, decoderlabels, trimlength = 5, offby2=False, preprocess=True, genfig = False):
+def fits_online_w(mk_name, date, runs, decoderlabels, trimlength = 5, offby2=False, preprocess=True, genfig = False):
 
     # load data from days - Including HC data. filter trials and separate runs by decoder
     if preprocess: # preprocess here is pretty light, just loading/creating z structs and saving them.
@@ -249,9 +297,9 @@ def fits_online_w(serverpath, mk_name, date, runs, decoderlabels, trimlength = 5
         zlist = []
         for i in np.arange(len(runs)):
             run = 'Run-{}'.format(str(runs[i]).zfill(3))
-            fpath = os.path.join(serverpath, mk_name, date, run)
+            fpath = os.path.join(config.raw_data_dir, mk_name, date, run)
 
-            z = ZStructTranslator(fpath, numChans=96, verbose=True)
+            z = ZStructTranslator(fpath, os.path.join(config.data_dir, 'fits_online'), numChans=96, verbose=True)
             z = z.asdataframe()
             if decoderlabels[i] != 'HC': # if not a hand control run, filter by only decoder on trials.
                 z = z[z['ClosedLoop'] == True] #make sure decode is on as well
@@ -264,11 +312,11 @@ def fits_online_w(serverpath, mk_name, date, runs, decoderlabels, trimlength = 5
             zlist.append(z)
         z_all = pd.concat(zlist, axis=0) #concatenate list into one large dataframe
         z_all = z_all.reset_index()
-        z_all.to_pickle(os.path.join(config.datadir, 'fits_online', f'data_{date}_{mk_name}.pkl'))
+        z_all.to_pickle(os.path.join(config.data_dir, 'fits_online', f'data_{date}_{mk_name}.pkl'))
         print('data saved')
     else:
         ## Load in saved data
-        z_all = pd.read_pickle(os.path.join(config.datadir, 'fits_online', f'data_{date}_{mk_name}.pkl'))
+        z_all = pd.read_pickle(os.path.join(config.data_dir, 'fits_online', f'data_{date}_{mk_name}.pkl'))
         print('data loaded')
 
     # Figure Setup - Create figure and Subfigures
@@ -298,35 +346,37 @@ def fits_online_w(serverpath, mk_name, date, runs, decoderlabels, trimlength = 5
         posax.set(title=decoder)
     
     if genfig:
-        z_RK_plot = ZStructTranslator(os.path.join(serverpath, mk_name, '2020-12-08', 'Run-007'), numChans=96, verbose=True)
+        z_RK_plot = ZStructTranslator(os.path.join(config.raw_data_dir, mk_name, '2020-12-08', 'Run-007'), 
+                                      os.path.join(config.data_dir, 'fits_online'), numChans=96, verbose=True)
         z_RK_plot = z_RK_plot.asdataframe()
         z_RK_plot = z_RK_plot[trimlength:]
         z_RK_plot = z_RK_plot[z_RK_plot['TrialSuccess'] == True] # filter out unsuccessful trials
         z_RK_plot = z_RK_plot[z_RK_plot['BlankTrial'] == False] # remove blank trial
 
-        z_RK_HC_plot = ZStructTranslator(os.path.join(serverpath, mk_name, '2020-12-08', 'Run-003'), numChans=96, verbose=True)
+        z_RK_HC_plot = ZStructTranslator(os.path.join(config.raw_data_dir, mk_name, '2020-12-08', 'Run-003'),
+                                         os.path.join(config.data_dir, 'fits_online'), numChans=96, verbose=True)
         z_RK_HC_plot = z_RK_HC_plot.asdataframe()
         z_RK_HC_plot = z_RK_HC_plot[trimlength:]
         z_RK_HC_plot = z_RK_HC_plot[z_RK_HC_plot['TrialSuccess'] == True] # filter out unsuccessful trials
         z_RK_HC_plot = z_RK_HC_plot[z_RK_HC_plot['BlankTrial'] == False] # remove blank trial
 
-        plotOnlineTraces(z_HC[100:110], posaxs[0], "Hand Control (HC)")
+        plotOnlineTraces(z_HC[90:100], posaxs[0], "Hand Control (HC)")
         plotOnlineTraces(z_RK_plot[52:62],posaxs[1],"ReFIT KF (RK)")
-        plotOnlineTraces(z_NN[52:62],posaxs[2],"tcFNN (NN)")
+        plotOnlineTraces(z_NN[32:42],posaxs[2],"tcFNN (NN)")
         plotOnlineTraces(z_RN[102:112],posaxs[3],"Re-tcFNN (RN)")
 
     # plot settings
     # posaxs[1].legend()
     # posaxs[1].get_legend().legend_handles[0].set(edgecolor='k',facecolor=None)
     posaxs[3].set(xlabel='Time (sec)')
-    for ax,color in zip(posaxs, [config.hcColor, config.kfColor, config.nnColorB, config.nnColor]):
+    for ax,color in zip(posaxs, [config.hcColor, config.kfColor, config.tcnColorB, config.tcnColor]):
         [i.set_linewidth(2) for i in ax.spines.values()]
         [i.set_edgecolor(color) for i in ax.spines.values()]
 
     # Per day, plot velocity distributions with broken axes, and calculate the KL divergence
     porder = (z_RK, z_NN, z_RN)
     labels = ('RK', 'NN', 'RN')
-    palette = (config.kfColor, config.nnColorB, config.nnColor)
+    palette = (config.kfColor, config.tcnColorB, config.tcnColor)
     kldivs = {'div':[], 'Decoder':[], 'counts':[], 'hc_counts':[]}
     for i, (zi, colors, decoder) in enumerate(zip(porder, palette, labels)):
         if not zi.empty:
@@ -389,10 +439,10 @@ def fits_online_w(serverpath, mk_name, date, runs, decoderlabels, trimlength = 5
     (tt, rt, ot) = online_metrics.calcTrialTimes(z_all, offBy2=offby2)
     clMetrics = pd.DataFrame(data={'TimeToTarget': rt, 'OrbitTime': ot})
     clMetrics['Decoder'] = z_all['Decoder']
-    clMetrics.to_pickle(os.path.join(config.resultsdir, 'fits_online', f'onlinefitmetrics_{mk_name}.pkl'))
+    clMetrics.to_pickle(os.path.join(config.results_dir, 'fits_online', f'onlinefitmetrics_{mk_name}.pkl'))
 
     kldivs = pd.DataFrame(data=kldivs)
-    kldivs.to_pickle(os.path.join(config.resultsdir, 'fits_online', f'onlinefitdivs_{mk_name}.pkl'))
+    kldivs.to_pickle(os.path.join(config.results_dir, 'fits_online', f'onlinefitdivs_{mk_name}.pkl'))
     return kldivs, metricaxs, dist_tops, onlinefitfig, clMetrics
 
 def fits_online_partII_w(mk_name, kldivs, ax, results):
@@ -424,13 +474,13 @@ def fits_online_partII_w(mk_name, kldivs, ax, results):
         
         day_summaries.append(pd.concat((tt,ot,orb),keys=('TT','OT','OR'),axis=1))
     
-    kldivs.to_csv(os.path.join(config.resultsdir, 'fits_online', f'kl_divs_w_counts_{mk_name}.csv'))
+    kldivs.to_csv(os.path.join(config.results_dir, 'fits_online', f'kl_divs_w_counts_{mk_name}.csv'))
     kldivs = kldivs.pivot(index='date',columns='Decoder',values='div').rename(columns={'RK':'div_RK','NN':'div_NN', 'RN':'div_RN'})
     day_summaries = pd.concat(day_summaries, axis=0, keys=kldivs.index)
 
     # save results
-    day_summaries.to_csv(os.path.join(config.resultsdir, 'fits_online', f'online_fit_results_{mk_name}.csv'))
-    kldivs.to_csv(os.path.join(config.resultsdir, 'fits_online', f'kl_divs_{mk_name}.csv'))
+    day_summaries.to_csv(os.path.join(config.results_dir, 'fits_online', f'online_fit_results_{mk_name}.csv'))
+    kldivs.to_csv(os.path.join(config.results_dir, 'fits_online', f'kl_divs_{mk_name}.csv'))
 
     # do stats across days
     def runttest_ind(results, metric, althypo):
@@ -462,7 +512,7 @@ def fits_online_partII_w(mk_name, kldivs, ax, results):
                           'std':[0,0,0]})
     
     crossdayresults = pd.concat((tt_output, ot_output, op_df), keys=['tt','ot','or'])
-    crossdayresults.to_csv(os.path.join(config.resultsdir, 'fits_online', f'cross_day_metrics_{mk_name}.csv'))
+    crossdayresults.to_csv(os.path.join(config.results_dir, 'fits_online', f'cross_day_metrics_{mk_name}.csv'))
     
     # difference of proportions test
     # null hypothesis, 0 difference in proportion
@@ -483,7 +533,7 @@ def fits_online_partII_w(mk_name, kldivs, ax, results):
     #consolidate and save results
     statsout = pd.Series(data={'RN TT < RK TT':tt_rn_test.pvalue, 'RN OT != RK OT':ot_rn_test.pvalue, 'RN OR > RK OR':pval_rn,
                                'NN TT < RK TT':tt_nn_test.pvalue, 'NN OT != RK OT':ot_nn_test.pvalue, 'NN OR > RK OR':pval_nn})
-    statsout.to_csv(os.path.join(config.resultsdir,'fits_online',f'stats_{mk_name}.csv'))
+    statsout.to_csv(os.path.join(config.results_dir,'fits_online',f'stats_{mk_name}.csv'))
 
     # PLOTTING
     # add average kl-div across days to distribution plots
@@ -499,13 +549,13 @@ def fits_online_partII_w(mk_name, kldivs, ax, results):
                     transform=distax[2].transAxes, fontsize=mpl.rcParams['axes.labelsize'], ha='center')
     
     """
-    # bar plots for time to target, orbiting rate, nonzero orbiting time
+    # horizontal bar plots for time to target, orbiting rate, nonzero orbiting time averaged across days
     sns.barplot(results.where(results['TimeToTarget'] != 0), x='TimeToTarget', y='Decoder', errorbar='se', ax=metricax[0],
-                palette=config.onlinePalette_w[[0, 3, 2, 1], :], order=['HC', 'RN', 'NN', 'RK'])
+                palette=config.online_palette_w[[0, 3, 2, 1], :], order=['HC', 'RN', 'NN', 'RK'])
     sns.barplot(orbit_props.reset_index(), x=0, y='Decoder', ax=metricax[1],
-                palette=config.onlinePalette_w[[0, 3, 2, 1], :], order=['HC', 'RN', 'NN', 'RK'])
+                palette=config.online_palette_w[[0, 3, 2, 1], :], order=['HC', 'RN', 'NN', 'RK'])
     sns.barplot(results.where(results['OrbitTime'] != 0), x='OrbitTime', y='Decoder', errorbar='se', ax=metricax[2],
-                palette=config.onlinePalette_w[[0, 3, 2, 1], :], order=['HC', 'RN', 'NN', 'RK'])
+                palette=config.online_palette_w[[0, 3, 2, 1], :], order=['HC', 'RN', 'NN', 'RK'])
 
     metricax[0].set(title='Time-to-target', ylabel=None, xlabel='Time (s)', xlim=(0, 3000),
                 xticks=[0, 1500, 3000], xticklabels=[0, 1.5, 3])
@@ -516,37 +566,86 @@ def fits_online_partII_w(mk_name, kldivs, ax, results):
     """
     
     decoder_order = ['HC', 'RN', 'NN', 'RK']
-
+    """
+    # Horizontal bar plots not averaged across days
     # Bar plot for Time-to-Target
-    sns.barplot(data=results[results['TimeToTarget'] != 0], x='TimeToTarget', y='date', hue='Decoder', hue_order=decoder_order, errorbar='se',
-                ax=metricax[0], palette=config.onlinePalette_w[[0, 3, 2, 1], :], 
+    sns.barplot(data=results[results['TimeToTarget'] != 0], x='date', y='TimeToTarget', hue='Decoder', hue_order=decoder_order, errorbar='se',
+                ax=metricax[0], palette=config.online_palette_w[[0, 3, 2, 1], :], alpha=0.6,
                 order=sorted(results['date'].unique(), reverse=True), dodge=True)
+    sns.stripplot(results[results['TimeToTarget'] != 0], x='date', y='TimeToTarget', hue='Decoder', hue_order=decoder_order,
+                  palette=config.online_palette_w[[0, 3, 2, 1], :], dodge=True, ax=metricax[0], alpha=0.7, zorder=1)
     
     pop_sizes_dates = results.groupby(['Decoder','date']).size()
     orbit_counts_dates = results.groupby(['Decoder','date']).apply(lambda x: np.sum(x['Orbited']))
     orbit_props_dates = orbit_counts_dates / pop_sizes_dates
 
     # Bar plot for Orbiting Rate
-    sns.barplot(data=orbit_props_dates.reset_index(), x=0, y='date', hue='Decoder', hue_order=decoder_order,
-                ax=metricax[1], palette=config.onlinePalette_w[[0, 3, 2, 1], :], dodge=True)
+    sns.barplot(data=orbit_props_dates.reset_index(), x='date', y=0, hue='Decoder', hue_order=decoder_order,
+                ax=metricax[1], palette=config.online_palette_w[[0, 3, 2, 1], :], alpha=0.6, dodge=True)
     
     # Bar plot for Nonzero Orbit Time
-    sns.barplot(data=results[results['OrbitTime'] != 0], x='OrbitTime', y='date', hue='Decoder', hue_order=decoder_order, errorbar='se',
-                ax=metricax[2], palette=config.onlinePalette_w[[0, 3, 2, 1], :], 
+    sns.barplot(data=results[results['OrbitTime'] != 0], x='date', y='OrbitTime', hue='Decoder', hue_order=decoder_order, errorbar='se',
+                ax=metricax[2], alpha=0.6, palette=config.online_palette_w[[0, 3, 2, 1], :], 
                 order=sorted(results['date'].unique(), reverse=True), dodge=True)
+    sns.stripplot(results[results['OrbitTime'] > 0], x='date', y='OrbitTime', hue='Decoder', hue_order=decoder_order,
+                  palette=config.online_palette_w[[0, 3, 2, 1], :], dodge=True, ax=metricax[2], alpha=0.7, zorder=1)
+    """
 
+    # Vertical bar plots for individual days
+    sns.barplot(data=results[results['TimeToTarget'] != 0], x='date', y='TimeToTarget', hue='Decoder', hue_order=decoder_order, errorbar='se',
+                ax=metricax[0], palette=config.online_palette_w[[0, 3, 2, 1], :], alpha=0.6, linewidth=2, errcolor='black', 
+                order=sorted(results['date'].unique(), reverse=True), dodge=True)
+    sns.stripplot(results[results['TimeToTarget'] != 0], x='date', y='TimeToTarget', hue='Decoder', hue_order=decoder_order, size=4, 
+                  palette=config.online_palette_w[[0, 3, 2, 1], :], dodge=True, ax=metricax[0], alpha=0.7, zorder=1)
+    
+    pop_sizes_dates = results.groupby(['Decoder','date']).size()
+    orbit_counts_dates = results.groupby(['Decoder','date']).apply(lambda x: np.sum(x['Orbited']))
+    orbit_props_dates = orbit_counts_dates / pop_sizes_dates
+
+    # Bar plot for Orbiting Rate
+    sns.barplot(data=orbit_props_dates.reset_index(), x='date', y=0, hue='Decoder', hue_order=decoder_order,
+                ax=metricax[1], palette=config.online_palette_w[[0, 3, 2, 1], :], alpha=1, dodge=True)
+    
+    sns.barplot(data=results[results['OrbitTime'] > 0], x='date', y='OrbitTime', hue='Decoder', hue_order=decoder_order, errorbar='se',
+                ax=metricax[2], palette=config.online_palette_w[[0, 3, 2, 1], :], alpha=0.6, linewidth=2, errcolor='black',
+                order=sorted(results['date'].unique(), reverse=True), dodge=True)
+    sns.stripplot(results[results['OrbitTime'] > 0], x='date', y='OrbitTime', hue='Decoder', hue_order=decoder_order,
+                  palette=config.online_palette_w[[0, 3, 2, 1], :], dodge=True, ax=metricax[2], alpha=0.7, size=4, zorder=0)
+                  
+    """
+    # Code for horizontal lines as opposed to bar plots
+    dates = sorted(results['date'].unique(), reverse=True)
+    ax = metricax[2]
+    # Loop through each category in the 'Decoder' column
+    palette_plotting = config.online_palette_w[[0, 3, 2, 1], :]
+    for i, decoder in enumerate(decoder_order):
+        subset = results[(results['Decoder'] == decoder) & (results['OrbitTime'] != 0)]
+        
+        # Compute means and standard errors (assuming results contains these columns)
+        means = subset.groupby('date')['OrbitTime'].mean()
+        errors = subset.groupby('date')['OrbitTime'].sem()
+        
+        # Get x positions corresponding to `dodge=True` behavior
+        x_positions = [dates.index(d) + (i - (len(decoder_order) - 1) / 2) * 0.2 for d in means.index]
+        
+        # Draw horizontal lines at the mean values
+        ax.hlines(y=means, xmin=[x - 0.1 for x in x_positions], xmax=[x + 0.1 for x in x_positions], colors=palette_plotting[i, :], lw=3, alpha=1, zorder=1)
+
+        # Optionally, add error bars
+        ax.errorbar(x_positions, means, yerr=errors, fmt='none', color='black', capsize=0, elinewidth=2, zorder=2)
+    """
     # Formatting for Time-to-Target plot
-    metricax[0].set(title='Time-to-Target', xlabel='Time (s)', xlim=(0, 3000), ylabel='Day',
-                    xticks=[0, 1500, 3000], xticklabels=[0, 1, 2], yticklabels=['1','2','3'])
+    metricax[0].set(title='Time-to-Target', xlabel='Day',  ylabel='Time (s)',xticklabels=['1','2','3'],
+                    ylim=(0, 8000), yticks=[0, 4000, 8000], yticklabels=[0, 4, 8])
     metricax[0].legend_.remove()
     
     # Formatting for Orbiting Rate plot
-    metricax[1].set(title='Orbiting Rate', ylabel='Day', xlabel='Proportion', yticklabels=['1','2','3'],
-                    xticks=[0, 0.5, 1])
+    metricax[1].set(title='Orbiting Rate', ylabel='Proportion', xlabel='Day', xticklabels=['1','2','3'],
+                    yticks=[0, 0.5, 1])
     metricax[1].legend_.remove()
     
     # Formatting for Nonzero Orbit Time plot
-    metricax[2].set(title='Nonzero Orbit Time', xlabel='Time (s)', xlim=(0, 3000), ylabel='Day',
-                    xticks=[0, 1500, 3000], xticklabels=[0, 1.5, 3], yticklabels=['1','2','3'])
+    metricax[2].set(title='Nonzero Orbit Time', xlabel='Day', ylabel='Time (s)', xticklabels=['1','2','3'],
+                    ylim=(0, 8000), yticks=[0, 4000, 8000], yticklabels=[0, 4, 8])
     metricax[2].legend_.remove()
     

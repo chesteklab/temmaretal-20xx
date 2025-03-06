@@ -2,13 +2,12 @@ import pdb
 import numpy as np
 import os
 import matplotlib.pyplot as plt
-import matplotlib as mpl
 import pandas as pd
 import torch
 import pickle
 import seaborn as sns
-import scipy.signal as signal
 import scipy.stats as stats
+import yaml
 
 from torch.utils.data import TensorDataset, DataLoader
 from torch.nn.functional import normalize
@@ -25,7 +24,7 @@ def variance_offline(mk_name, date, genfig, train_models=True, calculate_results
 
     # for now, run after decoder_fits_offline
     print('loading data')
-    with open(os.path.join(config.datadir,'fits_offline',f'data_{date}_{mk_name}.pkl'), 'rb') as f:
+    with open(os.path.join(config.data_dir,'fits_offline',f'data_{date}_{mk_name}.pkl'), 'rb') as f:
         trainData, testData, inIDXList, outIDXList, trial_num = pickle.load(f)
     print('data loaded')
 
@@ -57,48 +56,35 @@ def variance_offline(mk_name, date, genfig, train_models=True, calculate_results
     train_ds = TensorDataset(neu_train, vel_train)
     #in this case val will be training data - getting training error
     val_ds = TensorDataset(neu_train, vel_train) 
-    scale_ds = offline_training.BasicDataset(neu_train, vel_train)
 
     train_dl = DataLoader(train_ds, batch_size=64, shuffle=True, drop_last=True)
     val_dl = DataLoader(val_ds, batch_size=len(val_ds),drop_last=True)
-    scale_dl = DataLoader(scale_ds, batch_size=len(scale_ds), shuffle=True)
 
     num_models = 100
-    models = {'tcfnn':[], 'noreg':[], 'nobn':[], 'nodp':[]}
-    scalers = {'tcfnn':[], 'noreg':[], 'nobn':[], 'nodp':[]}
-    train_histories = {'tcfnn':[], 'noreg':[], 'nobn':[], 'nodp':[]}
-    val_histories = {'tcfnn':[], 'noreg':[], 'nobn':[], 'nodp':[]}
+    models = {'TCN':[], 'TCN_noreg':[], 'TCN_nobn':[], 'TCN_nodp':[]}
+    scalers = {'TCN':[], 'TCN_noreg':[], 'TCN_nobn':[], 'TCN_nodp':[]}
+    train_histories = {'TCN':[], 'TCN_noreg':[], 'TCN_nobn':[], 'TCN_nodp':[]}
+    val_histories = {'TCN':[], 'TCN_noreg':[], 'TCN_nobn':[], 'TCN_nodp':[]}
+
+    in_size = neu_train.shape[1]
+    num_states = 2
 
     if train_models:
         # models for main figure
         for i in range(num_models):
-            #setup network architectures
-            in_size = neu_train.shape[1]
-            layer_size = 256
-            ConvSize = 3
-            ConvSizeOut = 16
-            num_states = 2
-
-            # define training hyperparams
-            learning_rate = 1e-4
-            weight_decay = 1e-2
-            epochs = (10, 80, 80, 10)
-            if normalize_data:
-                epochs = (15, 15, 15, 15)
-
             # define keys and decoders to use
-            keys = ('tcfnn', 'noreg', 'nobn', 'nodp')
-            decoders = (nn_decoders.tcFNN, nn_decoders.noreg_tcFNN, nn_decoders.tcFNN_nobn, nn_decoders.tcFNN_nodp)
+            keys = config.variance_models_test
+            decoders = (nn_decoders.TCN, nn_decoders.TCNNoBN, nn_decoders.TCNNoDP, nn_decoders.TCNNoReg)
 
             # train two models each for the 4 types, one on normal data, one on normalized data
             for i, key in enumerate(keys):
                 # initialize the decoder and optimizer
-                model = decoders[i](in_size, layer_size, ConvSize, ConvSizeOut, num_states).to(device)
-                opt = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+                model = offline_training.init_model(decoders[i], 'TCN', in_size, num_states)
+                opt, scheduler = offline_training.init_opt(model, key)
 
                 #train model
-                tloss, vloss = offline_training.fit(epochs[i], model, opt, train_dl, val_dl, print_every=1, print_results=True)
-                scaler = offline_training.generate_output_scaler(model, scale_dl, num_outputs=num_states)
+                vloss, tloss, loss_iters = offline_training.fit(model, key, opt, None, train_dl, val_dl, normalized=normalize_data)
+                scaler = offline_training.generate_output_scaler(model, val_dl, num_outputs=num_states)
 
                 # save model and training histories
                 model = model.cpu()
@@ -109,9 +95,9 @@ def variance_offline(mk_name, date, genfig, train_models=True, calculate_results
 
         # save FNN decoders here
         if normalize_data:
-            fpath = os.path.join(config.modeldir, 'variance_offline', f'tcFNNmodels_norm_{date}_{mk_name}.pkl')
+            fpath = os.path.join(config.model_dir, 'variance_offline', f'tcFNNmodels_norm_{date}_{mk_name}.pkl')
         else:
-            fpath = os.path.join(config.modeldir, 'variance_offline', f'tcFNNmodels_{date}_{mk_name}.pkl')
+            fpath = os.path.join(config.model_dir, 'variance_offline', f'tcFNNmodels_{date}_{mk_name}.pkl')
         
         with open(fpath, 'wb') as f:
             pickle.dump((models, scalers, train_histories, val_histories), f)
@@ -119,9 +105,9 @@ def variance_offline(mk_name, date, genfig, train_models=True, calculate_results
     else:
         if calculate_results:
             if normalize_data:
-                fpath = os.path.join(config.modeldir, 'variance_offline', f'tcFNNmodels_norm_{date}_{mk_name}.pkl')
+                fpath = os.path.join(config.model_dir, 'variance_offline', f'tcFNNmodels_norm_{date}_{mk_name}.pkl')
             else:
-                fpath = os.path.join(config.modeldir, 'variance_offline', f'tcFNNmodels_{date}_{mk_name}.pkl')
+                fpath = os.path.join(config.model_dir, 'variance_offline', f'tcFNNmodels_{date}_{mk_name}.pkl')
             
             with open(fpath, 'rb') as f:
                 models, scalers, train_histories, val_histories = pickle.load(f)
@@ -133,11 +119,16 @@ def variance_offline(mk_name, date, genfig, train_models=True, calculate_results
     sec = 1000
     vel_test = vel_test.cpu().detach().numpy()/config.binsize * sec
 
-    keys = config.varianceOrder
+    keys = config.variance_models_test
     predictions = {}
     metrics = {'decoder':[], 'mse':[]}
     std_dev = {}
     hist = {}
+
+    if normalize_data:
+        result_filename = f'results_norm_{date}_{mk_name}.pkl'
+    else:
+        result_filename = f'results_{date}_{mk_name}.pkl'
 
     if calculate_results:
         for key in keys:           
@@ -169,18 +160,12 @@ def variance_offline(mk_name, date, genfig, train_models=True, calculate_results
             hist[key] = np.stack(val_histories[key])/config.binsize**2 * sec**2  # scaled to MR^2/sec^2
 
         metrics = pd.DataFrame(metrics)
-        if normalize_data:
-            fpath = os.path.join(config.resultsdir, 'variance_offline', f'results_norm_{date}_{mk_name}.pkl')
-        else:
-            fpath = os.path.join(config.resultsdir, 'variance_offline', f'results_{date}_{mk_name}.pkl')
+        fpath = os.path.join(config.results_dir, 'variance_offline', result_filename)
         
         with open(fpath, 'wb') as f1:
             pickle.dump((predictions, metrics, std_dev, hist), f1)
     else:
-        if normalize_data:
-            fpath = os.path.join(config.resultsdir, 'variance_offline', f'results_norm_{date}_{mk_name}.pkl')
-        else:
-            fpath = os.path.join(config.resultsdir, 'variance_offline', f'results_{date}_{mk_name}.pkl')
+        fpath = os.path.join(config.results_dir, 'variance_offline', result_filename)
 
         with open(fpath, 'rb') as f1:
             predictions, metrics, std_dev, hist = pickle.load(f1)
@@ -201,8 +186,11 @@ def variance_offline(mk_name, date, genfig, train_models=True, calculate_results
         mse_ax = analysis_axes[0]
         hist_ax = analysis_axes[1]
         sd_ax = analysis_axes[2]
-
-        plotrange = np.arange(1499, 1562)
+        
+        if mk_name == 'Joker':
+            plotrange = np.arange(1499, 1562)
+        else:
+            plotrange = np.arange(599, 662)
         times = plotrange * config.binsize / sec
         traceargs = {'alpha': 0.2, 'lw': 1}
 
@@ -221,9 +209,9 @@ def variance_offline(mk_name, date, genfig, train_models=True, calculate_results
 
 def variance_offline_partII(mk_name, axs, metrics, history, std_dev, normalize_data=False):
     hist_ax, mse_ax, sd_ax = axs
-    keys = config.varianceOrder
+    keys = config.variance_models_test
     lineargs = {'alpha': 1, 'lw': 1.5}
-    average_std_dev = {'decoder':[],'average sd':[]}
+    average_std_dev = {'decoder':[],'average sd':[], 'sds':[], 'se_median':[]}
     sdd = []
     
     for i, key in enumerate(keys):
@@ -242,6 +230,8 @@ def variance_offline_partII(mk_name, axs, metrics, history, std_dev, normalize_d
 
         average_std_dev['decoder'].append(key)
         average_std_dev['average sd'].append(a_sd)
+        average_std_dev['se_median'].append(1.253*a_sd/np.sqrt(sd_k.size))
+        average_std_dev['sds'].append(sd_k.flatten())
 
     if normalize_data:
         hist_ax.set(xlabel='Epochs (Log Scale)', title='C. Training error over time', xlim=(0, 15),
@@ -250,25 +240,39 @@ def variance_offline_partII(mk_name, axs, metrics, history, std_dev, normalize_d
         hist_ax.set(xlabel='Epochs (Log Scale)', title='C. Training error over time', xscale='log', xlim=(0, 100),
                     ylabel='MSE')
 
-    # sd_ax.hist(sdd, histtype='step',bins=200, label=keys)
-    # plt.legend()
-    sns.barplot(ax=sd_ax, data=pd.DataFrame(average_std_dev), x='average sd', y='decoder',
-                palette=config.offlineVariancePalette, hue_order=config.varianceOrder, order=keys)
+    sd_reformat_df = []
+    for i, row in pd.DataFrame(average_std_dev).iterrows():
+        decoder = row['decoder']
+        for value in row['sds']:
+            sd_reformat_df.append({'decoder': decoder, 'sd': value})
+    sd_reformat_df = pd.DataFrame(sd_reformat_df)
+
+    sns.barplot(ax=sd_ax, data=pd.DataFrame(average_std_dev), x='average sd', y='decoder', alpha=0.6,
+                palette=config.offlineVariancePalette, hue_order=config.variance_models, order=keys)
+    """
+    sns.stripplot(data=sd_reformat_df, x='sd', y='decoder', hue_order=config.variance_models, order=keys,
+                  palette=config.offlineVariancePalette, jitter=True, ax=sd_ax, alpha=0.7, size=4, zorder=0)
+    """
+    sd_ax.errorbar(x=average_std_dev['average sd'], y=average_std_dev['decoder'], color='black',
+                   xerr=average_std_dev['se_median'], fmt='none', elinewidth=2, zorder=1)
+    
     if mk_name == 'Joker':
         sd_ax.set(title='D. Median Prediction Deviations', xlabel='Median inter-model prediction SD across time',
-                yticklabels=config.varianceTicks, xlim=(0,0.2))
+                yticklabels=config.varianceTicks)#, xlim=(0,0.2))
     elif mk_name == 'Batman':
         if normalize_data:
             sd_ax.set(title='D. Median Prediction Deviations', xlabel='Median inter-model prediction SD across time',
-                    yticklabels=config.varianceTicks, xlim=(0,0.3))
+                    yticklabels=config.varianceTicks)#, xlim=(0,0.3))
         else:
             sd_ax.set(title='D. Median Prediction Deviations', xlabel='Median inter-model prediction SD across time',
-                    yticklabels=config.varianceTicks, xlim=(0,0.25))
+                    yticklabels=config.varianceTicks)#, xlim=(0,0.25))
 
-    sns.barplot(ax=mse_ax, data=metrics, y='decoder', x='mse', estimator='mean', errorbar='se',
-                palette=config.offlineVariancePalette, hue_order=config.varianceOrder, order=keys)
+    sns.barplot(ax=mse_ax, data=metrics, y='decoder', x='mse', estimator='mean', errorbar='se', alpha=0.6, errcolor='black',
+                palette=config.offlineVariancePalette, hue_order=config.variance_models, order=keys)
+    sns.stripplot(ax=mse_ax, data=metrics, y='decoder', x='mse', alpha=0.7, size=4,
+                palette=config.offlineVariancePalette, hue_order=config.variance_models, order=keys, zorder=0)
 
-    mse_ax.set(title='B. MSE on test set across days',xlabel='MSE',yticklabels=config.varianceTicks,xlim=(0,0.6))
+    mse_ax.set(title='B. MSE on test set across days',xlabel='MSE',yticklabels=config.varianceTicks)#,xlim=(0,0.6))
 
     mse_summary = metrics.groupby('decoder').agg(('mean','std'))
 
@@ -291,10 +295,10 @@ def variance_offline_partII(mk_name, axs, metrics, history, std_dev, normalize_d
 
     msediffs = pd.DataFrame(msediffs)
     if normalize_data:
-        msediffs.to_csv(os.path.join(config.resultsdir, 'variance_offline', f'mse_diffs_{mk_name}_NORM.csv'))
-        mse_summary.to_csv(os.path.join(config.resultsdir, 'variance_offline', f'mse_summary_{mk_name}_NORM.csv'))
-        pd.DataFrame(average_std_dev).to_csv(os.path.join(config.resultsdir, 'variance_offline', f'avg_SD_{mk_name}_NORM.csv'))
+        msediffs.to_csv(os.path.join(config.results_dir, 'variance_offline', f'mse_diffs_norm_{mk_name}.csv'))
+        mse_summary.to_csv(os.path.join(config.results_dir, 'variance_offline', f'mse_summary_norm_{mk_name}.csv'))
+        pd.DataFrame(average_std_dev).to_csv(os.path.join(config.results_dir, 'variance_offline', f'avg_SD_norm_{mk_name}.csv'))
     else:
-        msediffs.to_csv(os.path.join(config.resultsdir, 'variance_offline', f'mse_diffs_{mk_name}.csv'))
-        mse_summary.to_csv(os.path.join(config.resultsdir, 'variance_offline', f'mse_summary_{mk_name}.csv'))
-        pd.DataFrame(average_std_dev).to_csv(os.path.join(config.resultsdir, 'variance_offline', f'avg_SD_{mk_name}.csv'))
+        msediffs.to_csv(os.path.join(config.results_dir, 'variance_offline', f'mse_diffs_{mk_name}.csv'))
+        mse_summary.to_csv(os.path.join(config.results_dir, 'variance_offline', f'mse_summary_{mk_name}.csv'))
+        pd.DataFrame(average_std_dev).to_csv(os.path.join(config.results_dir, 'variance_offline', f'avg_SD_{mk_name}.csv'))
