@@ -226,7 +226,7 @@ def context_offline(mk_name, date, runs, labels, preprocess=True, train_rr=True,
                     elif modelc == 'Mixed':
                         metrics['on_off'].append('mix')
                     elif modelc == 'Mixed_Full':
-                        metrics['on_off'].append('mix')
+                        metrics['on_off'].append('mix_full')
                     else:
                         metrics['on_off'].append('off')
                     metrics['fold'].append(k)
@@ -285,7 +285,9 @@ def do_context_stats(metrics):
     # get differences between each group (separated by decoder)
     combos = [['off', 'on'],
               ['off', 'mix'],
-              ['mix', 'on']]
+              ['mix', 'on'],
+              ['off', 'mix_full'],
+              ['mix_full','on']]
 
     for comb in combos:
         for decoder in ('rr','tcn','rnn'):
@@ -350,10 +352,11 @@ def make_context_figure(results, date):
 
     top_row = sfs[0].subfigures(1,2)
     examples = top_row[0].subplots(3,1, sharex=True)
-    group_mses = top_row[1].add_subplot()
+    group_mses_ax = top_row[1].subplots(1,1)
+    # group_mses_ax = axs[0]
 
     ## example traces of an on and off context prediction maybe?
-    predictions = (tcn_predictions, rnn_predictions, rr_predictions)
+    predictions = (rr_predictions, tcn_predictions, rnn_predictions)
     decoders = ('tcn', 'rnn', 'rr')
     timeslice = slice(425,550)
     truth = test_velocities['Normal'][timeslice,1]
@@ -369,16 +372,18 @@ def make_context_figure(results, date):
     examples[0].set(title='on vs. off context predictions', ylabel='vel')
 
     results_date = results[results['date'] == date]
-    for i, (decoder, res) in enumerate(results_date.groupby('decoder')):
+    order = ('rr','tcn','rnn')
+    for decoder, res in results_date.groupby('decoder'):
+        i = order.index(decoder)
         # barplot
         width = .8
         sns.barplot(res, x='test_context', y='mse', hue='train_context', 
                     hue_order=config.context_order, palette=config.context_palette,
-                    width=width, ax=bar_axs[i], alpha=0.6)
+                    width=width, ax=bar_axs[i], alpha=0.7)
             
         sns.stripplot(res, x='test_context', y='mse', hue='train_context', 
                     hue_order=config.context_order, palette=config.context_palette,
-                    dodge=True, ax=bar_axs[i], alpha=0.7, zorder=1)
+                    dodge=True, ax=bar_axs[i], alpha=0.7, zorder=1, size=5)
             
         # add arrows above on context
         xtick_loc = {v.get_text(): v.get_position()[0] for v in bar_axs[i].get_xticklabels()}
@@ -395,16 +400,13 @@ def make_context_figure(results, date):
         
         if i != 0:
             bar_axs[i].set(ylabel=None)
-        bar_axs[i].get_legend().remove()
+            bar_axs[i].get_legend().remove()
         bar_axs[i].set(title=decoder, xlabel='Test Context', ylabel='MSE')
 
-
-    sns.barplot(results_date, x='decoder', y='mse', hue='on_off', hue_order=['on','off','mix'],
-                ax=group_mses, palette=config.context_group_palette, alpha=.6, errorbar='se')
-    sns.stripplot(results_date, x='decoder', y='mse', hue='on_off', hue_order=['on','off','mix'],
-                ax=group_mses, palette=config.context_group_palette, dodge=True, alpha=0.7, zorder=1)
-
-    group_mses.set(title='grouped', xlabel=None, ylabel='MSE')
-
-    context_fig.savefig(os.path.join(config.results_dir, 'context_offline', 'context_offlineFigure.pdf'))
+    sns.barplot(results, x='decoder', y='mse', hue='on_off', hue_order=['on','off','mix','mix_full'],
+                ax=group_mses_ax, palette=config.context_group_palette, alpha=.7, errorbar='se', order=('rr','tcn','rnn'))
+    sns.stripplot(results, x='decoder', y='mse', hue='on_off', hue_order=['on','off','mix','mix_full'],
+                ax=group_mses_ax, palette=config.context_group_palette, dodge=True, alpha=0.7, zorder=1, order=('rr','tcn','rnn'))
+    group_mses_ax.set(title='grouped', xlabel=None, ylabel='MSE')
     
+    context_fig.savefig(os.path.join(config.results_dir, 'context_offline', 'context_offlineFigure.pdf'))

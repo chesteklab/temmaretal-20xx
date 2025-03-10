@@ -334,42 +334,50 @@ def fits_offline_partII(results, mseax, klax):
 
     def dopairedstats(metric, althypo, ):
         rrm = results.loc[results['decoder'] == 'rr', metric].droplevel('indayidx')
-        nnm = results.loc[results['decoder'] == 'tcn', metric].droplevel('indayidx')
+        tcnm = results.loc[results['decoder'] == 'tcn', metric].droplevel('indayidx')
         dsm = results.loc[results['decoder'] == 'ds', metric].droplevel('indayidx')
-        rnm = results.loc[results['decoder'] == 'rnn', metric].droplevel('indayidx')
+        rnnm = results.loc[results['decoder'] == 'rnn', metric].droplevel('indayidx')
 
-        rrnn_difference = np.mean((rrm - nnm)/rrm)
+        rrtcn_difference = np.mean((rrm - tcnm)/rrm)
         rrds_difference = np.mean((rrm - dsm)/rrm)
+        rrrnn_difference = np.mean((rrm - rnnm)/rrm)
 
-        rrnn_testresult = stats.ttest_rel(rrm, nnm, alternative=althypo)
+        rrtcn_testresult = stats.ttest_rel(rrm, tcnm, alternative=althypo)
         rrds_testresult = stats.ttest_rel(rrm, dsm, alternative=althypo)
+        rrrnn_testresult = stats.ttest_rel(rrm, rnnm, alternative=althypo)
 
-        return rrnn_difference, rrds_difference, rrnn_testresult, rrds_testresult
+        return rrtcn_difference, rrds_difference, rrrnn_difference, rrtcn_testresult, rrds_testresult, rrrnn_testresult
 
     metricstotest = ('mse', 'mse_lo', 'mse_hi', 'mean_hi', 'mean_lo', 'kl_div')
     althypo = ('greater', 'greater', 'greater', 'less', 'greater', 'greater')
 
-    offlineFitResults = {'diff_rrnn':[], 'pval_rrnn':[], 'diff_rrds':[], 'pval_rrds':[]}
+    offlineFitResults = {'diff_rr_tcn':[], 'pval_rr_tcn':[], 'diff_rr_ds':[], 'pval_rr_ds':[], 'diff_rr_rnn':[],'pval_rr_rnn':[]}
     for metric, alt in zip(metricstotest, althypo):
-        a,b,c,d = dopairedstats(metric, alt)
-        offlineFitResults['diff_rrnn'].append(a)
-        offlineFitResults['pval_rrnn'].append(c.pvalue)
-        offlineFitResults['diff_rrds'].append(b)
-        offlineFitResults['pval_rrds'].append(d.pvalue)
-
-    # Plot Cross day KL
-
+        a,b,c,d,e,f = dopairedstats(metric, alt)
+        offlineFitResults['diff_rr_tcn'].append(a)
+        offlineFitResults['pval_rr_tcn'].append(d.pvalue)
+        offlineFitResults['diff_rr_ds'].append(b)
+        offlineFitResults['pval_rr_ds'].append(e.pvalue)
+        offlineFitResults['diff_rr_rnn'].append(c)
+        offlineFitResults['pval_rr_rnn'].append(f.pvalue)
 
     # Plot MSE over folds and over days
-    sns.barplot(data=results, x='date', y='mse', hue='decoder', palette=config.offline_palette,
+    sns.barplot(data=results, x='decoder', y='mse', hue='decoder', palette=config.offline_palette,
                 hue_order=config.offline_order, ax=mseax, alpha=0.6, errorbar='se', legend=False)
-    sns.stripplot(results, x='date', y='mse', hue='decoder', palette=config.offline_palette,
-                  hue_order=config.offline_order, dodge=True, ax=mseax, alpha=0.7, zorder=1)
+    markers = ('o','P','^','s')
+    i = 0
+    for date, res in results.groupby('date'):
+        sns.stripplot(res, x='decoder', y='mse', hue='decoder', palette=config.offline_palette,
+                      hue_order=config.offline_order, ax=mseax, alpha=0.7, zorder=1, marker=markers[i])
+        i = i+1
     # # Plot KL-Divergence over folds and over days
     sns.barplot(data=results, x='date', y='kl_div', hue='decoder', palette=config.offline_palette,
                 hue_order=config.offline_order, ax=klax, alpha=0.6, errorbar='se', legend=False)
-    sns.stripplot(results, x='date', y='kl_div', hue='decoder', palette=config.offline_palette,
-                  hue_order=config.offline_order, dodge=True, ax=klax, alpha=0.7, zorder=1)
+    i = 0
+    for date, res in results.groupby('date'):
+        sns.stripplot(res, x='decoder', y='kl_div', hue='decoder', palette=config.offline_palette,
+                      hue_order=config.offline_order, ax=klax, alpha=0.7, zorder=1, marker=markers[i])
+        i = i+1
 
     mseax.set(title='B. Open-loop prediction error', ylabel='Mean-Squared Error')
     klax.set(title='D. Decoder fit to true distribution', ylabel='KL-Divergence')

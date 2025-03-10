@@ -52,11 +52,12 @@ context_palette = np.asarray([[255, 200, 50],
                              [255, 100, 45],
                              [225, 25, 30],
                              [60, 200, 255],
-                             [30, 170, 225]])/255
+                             [128, 128, 128]])/255
 
 context_group_palette = np.asarray([[250, 190, 0],
                                    [155, 20, 115],
-                                   [60, 200, 255]])/255
+                                   [60, 200, 255],
+                                   [128, 128, 128]])/255
 
 context_order = ['Normal', 'Spring', 'Wrist','SprWrst', 'Mixed','Mixed_Full']
 onlineTracesPalette = context_group_palette[0:2,:]
