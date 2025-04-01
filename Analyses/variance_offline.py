@@ -198,7 +198,7 @@ def variance_offline(mk_name, date, genfig, train_models=True, calculate_results
             ax = trace_axes[i]
             ax.plot(times, vel_test[plotrange, 0], 'k-', zorder=8, label='Hand Control', lw=3)
 
-            ax.plot(times, predictions[key][plotrange, 0, :], **traceargs, c=config.offlineVariancePalette[key])
+            ax.plot(times, predictions[key][plotrange, 0, :], **traceargs, c=config.offline_variance_palette[key])
             ax.set(xlim=(times[0], times[-1]), xticks=(times[1],times[-2]),
                    ylabel='Velocity (AU/sec)' if i == 0 else None,
                    ylim=(-1.5, 2.5), yticks=[-1, 0, 1, 2], title=config.varianceLabels[i])
@@ -219,9 +219,9 @@ def variance_offline_partII(mk_name, axs, metrics, history, std_dev, normalize_d
         hist_mean = np.mean(hist, axis=0)
         hist_std = np.std(hist, axis=0)
 
-        hist_ax.plot(np.arange(len(hist_mean)), hist_mean, **lineargs, c=config.offlineVariancePalette[key])
+        hist_ax.plot(np.arange(len(hist_mean)), hist_mean, **lineargs, c=config.offline_variance_palette[key])
         hist_ax.fill_between(np.arange(len(hist_mean)), hist_mean - hist_std, hist_mean + hist_std, alpha=0.3,
-                             fc=config.offlineVariancePalette[key])
+                             fc=config.offline_variance_palette[key])
 
 
         sd_k = np.concatenate([sd[key] for sd in std_dev],axis=0)
@@ -248,7 +248,7 @@ def variance_offline_partII(mk_name, axs, metrics, history, std_dev, normalize_d
     sd_reformat_df = pd.DataFrame(sd_reformat_df)
 
     sns.barplot(ax=sd_ax, data=pd.DataFrame(average_std_dev), x='average sd', y='decoder', alpha=0.6,
-                palette=config.offlineVariancePalette, hue_order=config.variance_models, order=keys)
+                palette=config.offline_variance_palette, hue_order=config.variance_models, order=keys)
     """
     sns.stripplot(data=sd_reformat_df, x='sd', y='decoder', hue_order=config.variance_models, order=keys,
                   palette=config.offlineVariancePalette, jitter=True, ax=sd_ax, alpha=0.7, size=4, zorder=0)
@@ -268,30 +268,30 @@ def variance_offline_partII(mk_name, axs, metrics, history, std_dev, normalize_d
                     yticklabels=config.varianceTicks)#, xlim=(0,0.25))
 
     sns.barplot(ax=mse_ax, data=metrics, y='decoder', x='mse', estimator='mean', errorbar='se', alpha=0.6, errcolor='black',
-                palette=config.offlineVariancePalette, hue_order=config.variance_models, order=keys)
+                palette=config.offline_variance_palette, hue_order=config.variance_models, order=keys)
     sns.stripplot(ax=mse_ax, data=metrics, y='decoder', x='mse', alpha=0.7, size=4,
-                palette=config.offlineVariancePalette, hue_order=config.variance_models, order=keys, zorder=0)
+                palette=config.offline_variance_palette, hue_order=config.variance_models, order=keys, zorder=0)
 
     mse_ax.set(title='B. MSE on test set across days',xlabel='MSE',yticklabels=config.varianceTicks)#,xlim=(0,0.6))
 
     mse_summary = metrics.groupby('decoder').agg(('mean','std'))
 
     #do stats on mses, compare all to tcFNN
-    tcfnn_mses = metrics.groupby('decoder').get_group('tcfnn').reset_index()[['mse']]
+    tcn_mses = metrics.groupby('decoder').get_group('TCN').reset_index()[['mse']]
     msediffs = {'comparison':[],'diff':[],'pvalue':[], 'sd diff':[]}
     for label, group in metrics.groupby('decoder'):
-        if label != 'tcfnn':
+        if label != 'TCN':
             group_mses = group.reset_index()['mse']
         else:
             continue
-        msediffs['comparison'].append(f'tcfnn v {label}')
-        msediffs['diff'].append((tcfnn_mses.mean() - group_mses.mean())/tcfnn_mses.mean())
-        msediffs['pvalue'].append(stats.ttest_ind(tcfnn_mses, group_mses, alternative='less'))
+        msediffs['comparison'].append(f'tcn v {label}')
+        msediffs['diff'].append((tcn_mses.mean() - group_mses.mean())/tcn_mses.mean())
+        msediffs['pvalue'].append(stats.ttest_ind(tcn_mses, group_mses, alternative='less'))
 
         astd = pd.DataFrame(average_std_dev)
-        tcfnnsd = astd.loc[astd['decoder'] == 'tcfnn', 'average sd'].to_numpy()[0]
+        tcnsd = astd.loc[astd['decoder'] == 'TCN', 'average sd'].to_numpy()[0]
         labelsd = astd.loc[astd['decoder'] == label, 'average sd'].to_numpy()[0]
-        msediffs['sd diff'].append((tcfnnsd - labelsd)/tcfnnsd)
+        msediffs['sd diff'].append((tcnsd - labelsd)/tcnsd)
 
     msediffs = pd.DataFrame(msediffs)
     if normalize_data:

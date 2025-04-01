@@ -11,8 +11,9 @@ import pickle
 import matplotlib.pyplot as plt
 import sys
 
-## Offline Fit of Velocity Distribution ################################################################################
-run_section = True
+# Monkey N
+## Offline Fit of Velocity Distribution 
+run_section = False
 if run_section:
     mk_name = 'Joker'
     dates = ['2021-02-16',
@@ -23,8 +24,7 @@ if run_section:
     runlist = [[3], 
                [3], 
                [2], 
-               [3],
-               ]
+               [3]]
     run_part1 = True
     finalfig = None
     fignum = 1
@@ -37,7 +37,7 @@ if run_section:
             genfig = i == fignum
 
             metrics, fitfig, mseax, klax = fits_offline(mk_name, date, runs, preprocess=False, train_rr=False,
-                                                        train_ds=False, train_tcn=False, train_rnn=False, genfig=genfig)
+                                                        train_ds=False, train_tcn=False, train_rnn=False, genfig=genfig, short_day=False)
             results.append(metrics)
 
             if genfig:
@@ -54,7 +54,7 @@ if run_section:
     fits_offline_partII(mk_name, results, finalaxs[0], finalaxs[1])
     finalfig.savefig(os.path.join(config.results_dir, 'fits_offline', f'offlineFitFigure_{dates[fignum]}_{mk_name}.pdf'))
 
-# Online Velocity Distribution Comparisons #############################################################################
+## Online Velocity Distribution Comparisons 
 run_section = False
 if run_section:
     mk_name = 'Joker'
@@ -78,7 +78,7 @@ if run_section:
         genfig = i == fignum
 
         kldiv, ax, distaxs, fig, metrics = fits_online(mk_name, date, run, dclabs, offby2=off2,
-                                              preprocess=False)
+                                              preprocess=True)
         kldivs.append(kldiv)
 
         results.append(metrics)
@@ -93,10 +93,8 @@ if run_section:
     fits_online_partII(mk_name, kldivs, finalax, results)
     finalfig.savefig(os.path.join(config.results_dir,'fits_online',f'onlineFitFigure_{dates[fignum]}_{mk_name}.pdf'))
 
-# Offline tcFNN Training Variance ######################################################################################
+## Offline tcFNN Training Variance 
 run_section = False
-
-# take four days of offline data - same days as used for offline fit section
 if run_section:
     mk_name = 'Joker'
     dates = ['2021-02-16','2021-04-12', '2022-06-16', '2022-09-06']
@@ -125,7 +123,7 @@ if run_section:
         sds.append(std_dev)
 
         #run  variance offline analysis with normalized data
-        varfig, axs, metrics, hist, std_dev = variance_offline(mk_name, date, gfig, train_models=False, calculate_results=True, normalize_data=True)
+        varfig, axs, metrics, hist, std_dev = variance_offline(mk_name, date, gfig, train_models=False, calculate_results=False, normalize_data=True)
         if gfig:
             axes_n = axs
             fig_n = varfig
@@ -142,9 +140,8 @@ if run_section:
     fig.savefig(os.path.join(config.results_dir, 'variance_offline', f'offline_variance_figure_{mk_name}.pdf'))
     fig_n.savefig(os.path.join(config.results_dir, 'variance_offline', f'offline_variance_NORM_figure_{mk_name}.pdf'))
 
-# Online tcFNN Training Variance #######################################################################################
+## Online tcFNN Training Variance 
 run_section = False
-
 if run_section:
     mk_name = 'Joker'
 
@@ -162,11 +159,11 @@ if run_section:
             [1,1,1,1,1]]
     results = []
 
-    run_first = False
+    run_first = True
     for date, runs, labs in zip(dates, runs, labels):
         if run_first:
             results.append(variance_online(config.raw_data_dir, mk_name, date, runs, labs,
-                                           trimlength=5, preprocess=False))
+                                           trimlength=5, preprocess=True))
         else:
             results.append(pd.read_pickle(os.path.join(config.results_dir,
                                                        'variance_online',
@@ -174,11 +171,10 @@ if run_section:
 
     variance_online_partII(results)
 
-# Context Shifting Offline #############################################################################################
+## Context Shifting Offline
 run_section = False
-
 if run_section:
-    firstpart = False
+    firstpart = True
     if firstpart:
         results = []
         mk_name = 'Joker'
@@ -195,12 +191,15 @@ if run_section:
         labels = [['Normal', 'Wrist', 'SprWrst', 'Spring'],
                   ['Normal', 'Spring', 'SprWrst', 'Wrist'],
                   ['Normal', 'SprWrst', 'Spring', 'Wrist'],
-                  ['Spring', 'SprWrst', 'Normal', 'WristF'],
+                  ['Spring', 'SprWrst', 'Normal', 'Wrist'],
                   ['SprWrst', 'Wrist', 'Normal', 'Spring']]
 
+        flag = False
         for date, run, label in zip(dates, runs, labels):
+            if date == '2023-04-07':
+                flag = True
             metrics = context_offline(mk_name, date, run, label,
-                                      preprocess=False, train_rr=False, train_tcn=False, train_rnn=False)
+                                      preprocess=flag, train_rr=flag, train_tcn=flag, train_rnn=flag)
             results.append(metrics)
 
         results = pd.concat(results, axis=0).reset_index()
@@ -212,25 +211,29 @@ if run_section:
             results = pickle.load(f)
     context_offline_partII(results, '2023-04-11')
 
-## Repeat analyses for Wayne ###########################################################################################
-
-## Offline Fit of Velocity Distribution ################################################################################
+# Monkey W
+## Offline Fit of Velocity Distribution 
 run_section = True
 if run_section:
     mk_name = 'Batman'
-    dates = ['2020-11-21', 
-             '2020-12-05',
+    dates = ['2020-11-21',
              '2020-12-08',
              '2020-12-23',
+             '2021-04-14',
              ]
     runlist = [[3,13],
                [3],
-               [3],
                [4],
-               ]
+               [2]]
+
+    short_day = [True,
+                 True,
+                 True,
+                 False]
+    
     run_part1 = True
     finalfig = None
-    fignum = 1
+    fignum = 2
     if run_part1:
         results = []
         for i in range(len(dates)):
@@ -240,7 +243,7 @@ if run_section:
             genfig = i == fignum
 
             metrics, fitfig, mseax, klax = fits_offline(mk_name, date, runs, preprocess=False, train_rr=False,
-                                                        train_ds=False, train_tcn=False, train_rnn=False, genfig=genfig)
+                                                        train_ds=False, train_tcn=False, train_rnn=False, genfig=genfig, short_day=short_day[i])
             results.append(metrics)
 
             if genfig:
@@ -257,13 +260,13 @@ if run_section:
     fits_offline_partII(mk_name, results, finalaxs[0], finalaxs[1])
     finalfig.savefig(os.path.join(config.results_dir, 'fits_offline', f'offlineFitFigure_{dates[fignum]}_{mk_name}.pdf'))
 
-# Online Velocity Distribution Comparisons #############################################################################
+## Online Velocity Distribution Comparisons
 run_section = False
 if run_section:
     mk_name = 'Batman'
     dates = ['2020-11-21',
              '2020-12-08',
-             '2020-12-23'] #add another opt day
+             '2020-12-23']
     runs = [[3, 5, 8, 12, 13],
             [3, 7, 9, 10],
             [4, 5, 6, 10, 11]]
@@ -282,7 +285,7 @@ if run_section:
         genfig = i == fignum
 
         kldiv, ax, distaxs, fig, metrics = fits_online_w(mk_name, date, run, dclabs, offby2=off2,
-                                              preprocess=False, genfig=genfig)
+                                              preprocess=True, genfig=genfig)
         kldivs.append(kldiv)
 
         results.append(metrics)
@@ -297,14 +300,11 @@ if run_section:
     fits_online_partII_w(mk_name, kldivs, finalax, results)
     finalfig.savefig(os.path.join(config.results_dir,'fits_online',f'onlineFitFigure_{mk_name}.pdf'))
     
-
-# Offline tcFNN Training Variance ######################################################################################
+## Offline tcFNN Training Variance
 run_section = False
-
-# take four days of offline data - same days as used for offline fit section
 if run_section:
     mk_name = 'Batman'
-    dates = ['2020-11-21', '2020-12-08', '2020-12-23']
+    dates = ['2020-11-21', '2020-12-05','2020-12-08', '2020-12-23']
     genfig = 2
     fig = None
     axes = None
@@ -321,9 +321,14 @@ if run_section:
     # run the analysis for each day
     for i, date in enumerate(dates):
         gfig = i == genfig
-
+        if date == '2020-12-05':
+            train = True
+            calc = True
+        else:
+            train = False
+            calc = False
         #run variance offline analysis with standard datas
-        varfig, axs, metrics, hist, std_dev = variance_offline(mk_name, date, gfig, train_models=False, calculate_results=True)
+        varfig, axs, metrics, hist, std_dev = variance_offline(mk_name, date, gfig, train_models=train, calculate_results=calc)
         if gfig:
             axes = axs
             fig = varfig
@@ -332,7 +337,7 @@ if run_section:
         sds.append(std_dev)
 
         #run  variance offline analysis with normalized data
-        varfig, axs, metrics, hist, std_dev = variance_offline(mk_name, date, gfig, train_models=False, calculate_results=True, normalize_data=True)
+        varfig, axs, metrics, hist, std_dev = variance_offline(mk_name, date, gfig, train_models=True, calculate_results=train, normalize_data=calc)
         if gfig:
             axes_n = axs
             fig_n = varfig
@@ -348,5 +353,3 @@ if run_section:
 
     fig.savefig(os.path.join(config.results_dir, 'variance_offline', f'offline_variance_figure_{mk_name}_{dates[genfig]}.pdf'))
     fig_n.savefig(os.path.join(config.results_dir, 'variance_offline', f'offline_variance_NORM_figure_{mk_name}_{dates[genfig]}.pdf'))
-
-plt.show()

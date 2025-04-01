@@ -21,7 +21,8 @@ from utils.offline_data import data_cleanup, split_offline_data
 Addressing the first block of the paper: Do NNs fit better than other methods?
 - Offline Figure showing fit of predicted velocities of various approaches to hand control
 '''
-def fits_offline(mk_name, date, runs, preprocess=True, train_rr=True, train_ds=True, train_tcn=True, train_rnn = True, genfig=True):
+def fits_offline(mk_name, date, runs, preprocess=True, train_rr=True, train_ds=True, train_tcn=True, train_rnn = True, genfig=True,
+                 short_day=False):
     #setup pytorch stuff
     device = torch.device('cuda:0')
     dtype = torch.float
@@ -43,7 +44,7 @@ def fits_offline(mk_name, date, runs, preprocess=True, train_rr=True, train_ds=T
                 z = pd.concat([z,zadd])
 
         #take middle 1000 trials and get z feats
-        if mk_name == 'Batman':
+        if short_day:
             zsliced = sliceMiddleTrials(z, 400)
             trainDD = getZFeats(zsliced[0:300], config.binsize, featList=['FingerAnglesTIMRL', 'NeuralFeature'])
             testDD = getZFeats(zsliced[300:], config.binsize, featList=['FingerAnglesTIMRL', 'NeuralFeature','TrialNumber'])
@@ -197,8 +198,8 @@ def fits_offline(mk_name, date, runs, preprocess=True, train_rr=True, train_ds=T
     hi_vel_idx = sortidx[np.floor(len(sortidx) * 9 / 10).astype(int):]  # take top 10%
     lo_vel_idx = sortidx[0:np.ceil(len(sortidx) / 10).astype(int)]  # take bottom 10%
 
-    hi_thr= vel_test.flatten()[hi_vel_idx[0]]
-    lo_thr = vel_test.flatten()[lo_vel_idx[-1]]
+    hi_thr= np.abs(vel_test.flatten()[hi_vel_idx[0]])
+    lo_thr = np.abs(vel_test.flatten()[lo_vel_idx[-1]])
 
     binedges = np.linspace(-9, 9, 100)
     decoders = ('rr','ds','tcn', 'rnn')
@@ -283,17 +284,17 @@ def fits_offline(mk_name, date, runs, preprocess=True, train_rr=True, train_ds=T
                     spine.set_visible(False)
             if i == 0:
                 if mk_name == 'Batman':
-                    ax.set(ylabel='Velocity (Flex/Sec)', yticks=(-4,-2,0,2))
+                    ax.set(ylabel='Velocity (Flex/Sec)', yticks=(-2,0,2))
                 else:
                     ax.set(ylabel='Velocity (Flex/Sec)', yticks=(-1,0,1,2))
             else:
                 if mk_name == 'Batman':
-                    ax.set_yticks((-4,-2,0,2), labels=[])
+                    ax.set_yticks((-2,0,2), labels=[])
                 else:
                     ax.set_yticks((-1,0,1,2), labels=[])
             if mk_name == 'Batman':
-                ax.set(xlabel='Time (sec)',title=predLabels[i], ylim=(-5.5,2.5),
-                   xlim=(times[0],times[-1]),xticks=(times[1],times[-2]))
+                ax.set(xlabel='Time (sec)',title=predLabels[i], ylim=(-2.25,2.25),
+                   xlim=(times[0],times[-1]),xticks=(30,31,32,33))
             else:
                 ax.set(xlabel='Time (sec)',title=predLabels[i], ylim=(-1.5,2.5), xlim=(times[0],times[-1]), xticks=(75, 76, 77, 78))
 
@@ -309,12 +310,12 @@ def fits_offline(mk_name, date, runs, preprocess=True, train_rr=True, train_ds=T
                 arrowargs = {'color':'k','width':0.01}
                 if top and addlines:
                     ax.annotate("", xy=(lo_thr, 3), xytext=(lo_thr+1, 3),
-                                arrowprops=dict(arrowstyle="-|>", lw=3))
+                                arrowprops=dict(arrowstyle="-|>", lw=3)) # from xytext to xy
                     ax.annotate("", xy=(0-lo_thr, 3), xytext=(0-lo_thr-1, 3),
                                 arrowprops=dict(arrowstyle="-|>", lw=3))
 
                 elif addlines:
-                    ax.annotate("", xy=(hi_thr, .05), xytext=(hi_thr+1, .05),
+                    ax.annotate("", xy=(hi_thr, .05), xytext=(hi_thr+1, .05), # from xy to xytext
                                 arrowprops=dict(arrowstyle="<|-", lw=3))
                     ax.annotate("", xy=(0-hi_thr, .05), xytext=(0-hi_thr-1, .05),
                                 arrowprops=dict(arrowstyle="<|-", lw=3))

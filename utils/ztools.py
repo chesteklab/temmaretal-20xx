@@ -110,7 +110,9 @@ def ZStructTranslator(source_dir, out_dir, overwrite=False, numChans=96, verbose
 
         try:
             # load in and read z translator
+            print(os.path.join(source_dir, "zScript.txt"))
             f = open(r'{}'.format(os.path.join(source_dir, "zScript.txt")), "r")
+            
             if f.mode == 'r':
                 contents = f.read()
         except:

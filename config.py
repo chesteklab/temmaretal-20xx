@@ -40,8 +40,8 @@ offline_palette = np.stack((kfColor, dsColor, tcnColor, rnnColor, tcnColorB))
 offline_order = ('rr','ds','tcn','rnn')
 online_palette = np.stack((hcColor, kfColor, tcnColor, rnnColor))
 online_palette_w = np.stack((hcColor, kfColor, tcnColor, tcnColorB))
-offlineVariancePalette = {'hc':hcColor, 'tcfnn':tcnColor, 'nodp':nodpColor,
-                          'nobn':nobnColor, 'noreg':noregColor}
+offline_variance_palette = {'hc':hcColor, 'TCN':tcnColor, 'TCN_nodp':nodpColor,
+                          'TCN_nobn':nobnColor, 'TCN_noreg':noregColor}
 
 variance_models = ('TCN', 'TCN_nobn', 'TCN_nodp', 'TCN_noreg')
 varianceLabels = ('tcfnn', 'dropout only (noBN)', 'batchnorm only (noDP)', 'noReg')
@@ -69,12 +69,12 @@ numChans = 96
 batch_size = 64
 
 # for linux
-#server_dir = '/run/user/1000/gvfs/smb-share:server=cnpl-drmanhattan.engin.umich.edu,share=share'
+server_dir = '/run/user/1000/gvfs/smb-share:server=cnpl-drmanhattan.engin.umich.edu,share=share'
 #for windows
-server_dir = 'Z:\\'
+#server_dir = 'Z:\\'
 raw_data_dir = os.path.join(server_dir, 'Data/Monkeys')
 # raw_data_dir = 'Z:\Data\Monkeys'
-output_dir = os.path.join(server_dir, 'Student Folders/Jesse_DeMatteo/temmaretal-20xx')
+output_dir = os.path.join(server_dir, 'Student Folders/Hisham_Temmar/tcFNNPaper/revision_wayne')
 model_dir = os.path.join(output_dir,'Models')
 results_dir = os.path.join(output_dir,'Results')
 data_dir = os.path.join(output_dir,'Data')
