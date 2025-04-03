@@ -13,7 +13,7 @@ import sys
 
 # Monkey N
 ## Offline Fit of Velocity Distribution 
-run_section = False
+run_section = True
 if run_section:
     mk_name = 'Joker'
     dates = ['2021-02-16',
@@ -213,7 +213,7 @@ if run_section:
 
 # Monkey W
 ## Offline Fit of Velocity Distribution 
-run_section = True
+run_section = False
 if run_section:
     mk_name = 'Batman'
     dates = ['2020-11-21',

@@ -1,6 +1,7 @@
 import pdb
 
 import numpy as np
+import scipy.stats as stats
 
 def mse(x, y, rowvar=False):
     '''
@@ -93,3 +94,14 @@ def bin_psd(psd, f, numbins):
         binned_psd[i,:,:] = np.mean(psd[binmask,:,:], axis=0)
 
     return binned_psd, np.linspace(0, np.max(f), numbins+1)
+
+def kl_div_gaussian(pred, binedges, binsize):
+    mean = np.mean(pred)
+    std = np.std(pred)
+    fitted_gaussian = stats.norm.pdf(binedges[:-1] + binsize / 2, loc=mean, scale=std)
+    pred_hist, _ = np.histogram(pred, bins=binedges, density=True)
+    pred_hist /= np.sum(pred_hist)
+    fitted_gaussian /= np.sum(fitted_gaussian)
+    kl_div_gaussian = kldiv(pred_hist, fitted_gaussian)
+
+    return kl_div_gaussian
