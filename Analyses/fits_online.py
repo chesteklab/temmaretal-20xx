@@ -190,6 +190,7 @@ def fits_online_partII(mk_name, kldivs, ax, results):
     pop_sizes = results.groupby('Decoder').size()
     orbit_counts = results.groupby('Decoder').apply(lambda x: np.sum(x['Orbited']))
     orbit_props = orbit_counts / pop_sizes
+    orbit_props = orbit_props.reindex(['HC', 'RN', 'RK'])
 
     op_df = pd.DataFrame({'decoder':['RN','RK'],
                           'mean':[orbit_props['RN'],orbit_props['RK']],
@@ -593,10 +594,10 @@ def fits_online_partII_w(mk_name, kldivs, ax, results):
 
     # Vertical bar plots for individual days
     sns.barplot(data=results[results['TimeToTarget'] != 0], x='date', y='TimeToTarget', hue='Decoder', hue_order=decoder_order, errorbar='se',
-                ax=metricax[0], palette=config.online_palette_w[[0, 3, 2, 1], :], alpha=0.6, linewidth=2, errcolor='black', 
+                ax=metricax[0], palette=config.online_palette_w[[0, 2, 3, 1], :], alpha=0.6, linewidth=2, errcolor='black', 
                 order=sorted(results['date'].unique(), reverse=True), dodge=True)
     sns.stripplot(results[results['TimeToTarget'] != 0], x='date', y='TimeToTarget', hue='Decoder', hue_order=decoder_order, size=4, 
-                  palette=config.online_palette_w[[0, 3, 2, 1], :], dodge=True, ax=metricax[0], alpha=0.7, zorder=1)
+                  palette=config.online_palette_w[[0, 2, 3, 1], :], dodge=True, ax=metricax[0], alpha=0.7, zorder=1)
     
     pop_sizes_dates = results.groupby(['Decoder','date']).size()
     orbit_counts_dates = results.groupby(['Decoder','date']).apply(lambda x: np.sum(x['Orbited']))
@@ -604,13 +605,13 @@ def fits_online_partII_w(mk_name, kldivs, ax, results):
 
     # Bar plot for Orbiting Rate
     sns.barplot(data=orbit_props_dates.reset_index(), x='date', y=0, hue='Decoder', hue_order=decoder_order,
-                ax=metricax[1], palette=config.online_palette_w[[0, 3, 2, 1], :], alpha=1, dodge=True)
+                ax=metricax[1], palette=config.online_palette_w[[0, 2, 3, 1], :], alpha=1, dodge=True)
     
     sns.barplot(data=results[results['OrbitTime'] > 0], x='date', y='OrbitTime', hue='Decoder', hue_order=decoder_order, errorbar='se',
-                ax=metricax[2], palette=config.online_palette_w[[0, 3, 2, 1], :], alpha=0.6, linewidth=2, errcolor='black',
+                ax=metricax[2], palette=config.online_palette_w[[0, 2, 3, 1], :], alpha=0.6, linewidth=2, errcolor='black',
                 order=sorted(results['date'].unique(), reverse=True), dodge=True)
     sns.stripplot(results[results['OrbitTime'] > 0], x='date', y='OrbitTime', hue='Decoder', hue_order=decoder_order,
-                  palette=config.online_palette_w[[0, 3, 2, 1], :], dodge=True, ax=metricax[2], alpha=0.7, size=4, zorder=0)
+                  palette=config.online_palette_w[[0, 2, 3, 1], :], dodge=True, ax=metricax[2], alpha=0.7, size=4, zorder=0)
                   
     """
     # Code for horizontal lines as opposed to bar plots
