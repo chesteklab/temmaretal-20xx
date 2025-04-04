@@ -6,6 +6,7 @@ import pandas as pd
 from scipy import stats
 import seaborn as sns
 import pdb
+import csv
 import config
 import utils.online_metrics
 from utils.ztools import ZStructTranslator
@@ -18,6 +19,8 @@ def fits_online(mk_name, date, runs, decoderlabels, trimlength = 5, offby2=False
     if preprocess: # preprocess here is pretty light, just loading/creating z structs and saving them.
         # run through each day, load the runs, get z structs as dataframes, append to list. then, concatenate into
         # one large dataframe and save it out.
+        succ_counts = {'HC':0, 'RN':0, 'RK':0, 'NN':0}
+        num_trials = {'HC':0, 'RN':0, 'RK':0, 'NN':0}
         zlist = []
         for i in np.arange(len(runs)):
             run = 'Run-{}'.format(str(runs[i]).zfill(3))
@@ -28,12 +31,20 @@ def fits_online(mk_name, date, runs, decoderlabels, trimlength = 5, offby2=False
             if decoderlabels[i] != 'HC': # if not a hand control run, filter by only decoder on trials.
                 z = z[z['ClosedLoop'] == True] #make sure decode is on as well
             z = z[trimlength:]
-            z = z[z['TrialSuccess'] == True] # filter out unsuccessful trials
             z = z[z['BlankTrial'] == False] # remove blank trial
+            num_trials[decoderlabels[i]] = num_trials[decoderlabels[i]] + len(z)
+            
+            z = z[z['TrialSuccess'] == True] # filter out unsuccessful trials
+            succ_counts[decoderlabels[i]] = succ_counts[decoderlabels[i]] + len(z)
 
             z['Decoder'] = decoderlabels[i] # add decoder label to dataframe
             z['Run'] = run
             zlist.append(z)
+
+        succ_df = pd.DataFrame.from_dict(succ_counts, orient='index', columns=['successes'])
+        succ_df['trial_counts'] = succ_df.index.map(num_trials)
+        succ_df.to_csv(os.path.join(config.results_dir, 'fits_online', f'success_{date}_{mk_name}.csv'))
+            
         z_all = pd.concat(zlist, axis=0) #concatenate list into one large dataframe
         z_all = z_all.reset_index()
         z_all.to_pickle(os.path.join(config.data_dir, 'fits_online', f'data_{date}_{mk_name}.pkl'))
@@ -247,53 +258,20 @@ def fits_online_partII(mk_name, kldivs, ax, results):
                   palette=config.online_palette[[0, 2, 1], :], ax=metricax[2], alpha=0.7, size=4, zorder=1)
 
     # plot settings
-    metricax[0].set(title='Time-to-target', ylabel='Decoder', xlabel='Time (s)',# xlim=(0, 1500),
-                xticks=[0, 750, 1500], xticklabels=[0, .75, 1.5], yticklabels = ['HC', 'RN', 'RK'])
+    metricax[0].set(title='Time-to-target', ylabel='Decoder', xlabel='Time (s)', yticklabels = ['HC', 'RN', 'RK'])
 
-    metricax[1].set(title='Orbiting rate', ylabel='Decoder', xlabel='Proportion',
-            xticks=[0, .5, 1], yticklabels = ['HC', 'RN', 'RK'])
+    metricax[1].set(title='Orbiting rate', ylabel='Decoder', xlabel='Proportion', yticklabels = ['HC', 'RN', 'RK'])
 
-    metricax[2].set(title='Nonzero orbit time', ylabel='Decoder', xlabel='Time (s)', xlim=(0, 7000),
-                    xticks=[0, 3500, 7000], xticklabels=[0, 3.5, 7], yticklabels = ['HC', 'RN', 'RK'])
-    """
-
-    # bar plots for time to target, orbiting rate, nonzero orbiting time
-    sns.barplot(results[results['TimeToTarget'] != 0], x='Decoder', y='TimeToTarget', errorbar='se', ax=metricax[0], 
-                palette=config.online_palette[[0, 2, 1], :], alpha=0.6)
-    day_means = results[results['TimeToTarget'] != 0].groupby(['date', 'Decoder'], as_index=False)['TimeToTarget'].mean()
-    sns.scatterplot(data=day_means, x='Decoder', y='TimeToTarget', hue='Decoder', palette=config.online_palette[[0, 1, 2], :], 
-                    ax=metricax[0], alpha = .7, edgecolor = 'none', zorder=2)
-
-    #sns.stripplot(results[results['TimeToTarget'] != 0], x='TimeToTarget', y='Decoder', 
-    #              palette=config.online_palette[[0, 2, 1], :], ax=metricax[0], alpha=0.7, zorder=1)
-
-    # Bar plot for Orbiting Rate
-    sns.barplot(data=orbit_props.reset_index(), y=0, x='Decoder', 
-                ax=metricax[1], palette=config.online_palette[[0, 2, 1], :], alpha=0.6)
-
-    sns.barplot(results[results['OrbitTime'] > 0], y='OrbitTime', x='Decoder', errorbar='se', ax=metricax[2], 
-                palette=config.online_palette[[0, 2, 1], :], alpha=0.6)
-    sns.stripplot(results[results['OrbitTime'] != 0], y='OrbitTime', x='Decoder', 
-                  palette=config.online_palette[[0, 2, 1], :], ax=metricax[2], alpha=0.7, zorder=1)
-
-    # plot settings
-    metricax[0].set(title='Time-to-target', xlabel='Decoder', ylabel='Time (s)', ylim=(0, 1500),
-                yticks=[0, 750, 1500], yticklabels=[0, .75, 1.5], xticklabels = ['HC', 'RN', 'RK'])
-    metricax[0].get_legend().remove()
-
-    metricax[1].set(title='Orbiting rate', xlabel='Decoder', ylabel='Proportion',
-            yticks=[0, .5, 1], xticklabels = ['HC', 'RN', 'RK'])
-
-    metricax[2].set(title='Nonzero orbit time', xlabel='Decoder', ylabel='Time (s)', ylim=(0, 7000),
-                    yticks=[0, 3500, 7000], yticklabels=[0, 3.5, 7], xticklabels = ['HC', 'RN', 'RK'])
-    """
+    metricax[2].set(title='Nonzero orbit time', ylabel='Decoder', xlabel='Time (s)', yticklabels = ['HC', 'RN', 'RK'])
         
 def fits_online_w(mk_name, date, runs, decoderlabels, trimlength = 5, offby2=False, preprocess=True, genfig = False):
-
+    
     # load data from days - Including HC data. filter trials and separate runs by decoder
     if preprocess: # preprocess here is pretty light, just loading/creating z structs and saving them.
         # run through each day, load the runs, get z structs as dataframes, append to list. then, concatenate into
         # one large dataframe and save it out.
+        succ_counts = {'HC':0, 'RN':0, 'RK':0, 'NN':0}
+        num_trials = {'HC':0, 'RN':0, 'RK':0, 'NN':0}
         zlist = []
         for i in np.arange(len(runs)):
             run = 'Run-{}'.format(str(runs[i]).zfill(3))
@@ -304,12 +282,24 @@ def fits_online_w(mk_name, date, runs, decoderlabels, trimlength = 5, offby2=Fal
             if decoderlabels[i] != 'HC': # if not a hand control run, filter by only decoder on trials.
                 z = z[z['ClosedLoop'] == True] #make sure decode is on as well
             z = z[trimlength:]
-            z = z[z['TrialSuccess'] == True] # filter out unsuccessful trials
             z = z[z['BlankTrial'] == False] # remove blank trial
+
+            if run == 'Run-009' and date == '2020-12-08':
+                z = z[0:-84] # from willsey processing code and notes, gave up at this point
+
+            num_trials[decoderlabels[i]] = num_trials[decoderlabels[i]] + len(z)
+            
+            z = z[z['TrialSuccess'] == True] # filter out unsuccessful trials
+            succ_counts[decoderlabels[i]] = succ_counts[decoderlabels[i]] + len(z)
 
             z['Decoder'] = decoderlabels[i] # add decoder label to dataframe
             z['Run'] = run
             zlist.append(z)
+
+        succ_df = pd.DataFrame.from_dict(succ_counts, orient='index', columns=['successes'])
+        succ_df['trial_counts'] = succ_df.index.map(num_trials)
+        succ_df.to_csv(os.path.join(config.results_dir, 'fits_online', f'success_{date}_{mk_name}.csv'))
+
         z_all = pd.concat(zlist, axis=0) #concatenate list into one large dataframe
         z_all = z_all.reset_index()
         z_all.to_pickle(os.path.join(config.data_dir, 'fits_online', f'data_{date}_{mk_name}.pkl'))
@@ -431,6 +421,7 @@ def fits_online_w(mk_name, date, runs, decoderlabels, trimlength = 5, offby2=Fal
 
     # distribution plot settings
     dist_bots[0].set(xlabel=None, xticklabels=[])
+    dist_bots[1].set(xlabel=None, xticklabels=[])
     dist_tops[0].set(title='RK Velocity Distribution')
     dist_tops[1].set(title='NN Velocity Distribution')
     dist_tops[2].set(title='RN Velocity Distribution')
