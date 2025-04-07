@@ -514,9 +514,9 @@ def fits_online_partII_w(mk_name, kldivs, ax, results):
     zscore_rn = pdiff_rn / sediff_rn
     pval_rn = 1 - stats.norm.cdf(np.abs(zscore_rn))
 
-    pdiff_nn = orbit_props['RN'] - orbit_props['RK']
-    phat_nn = (orbit_counts['RN'] + orbit_counts['RK']) / (pop_sizes['RN'] + pop_sizes['RK'])
-    sediff_nn = np.sqrt(phat_nn * (1 - phat_nn) * (1 / pop_sizes['RN'] + 1 / pop_sizes['RK']))
+    pdiff_nn = orbit_props['NN'] - orbit_props['RK']
+    phat_nn = (orbit_counts['NN'] + orbit_counts['RK']) / (pop_sizes['NN'] + pop_sizes['RK'])
+    sediff_nn = np.sqrt(phat_nn * (1 - phat_nn) * (1 / pop_sizes['NN'] + 1 / pop_sizes['RK']))
 
     zscore_nn = pdiff_nn / sediff_nn
     pval_nn = 1 - stats.norm.cdf(np.abs(zscore_nn))

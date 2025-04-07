@@ -13,7 +13,7 @@ import sys
 
 # Monkey N
 ## Offline Fit of Velocity Distribution 
-run_section = True
+run_section = False
 if run_section:
     mk_name = 'Joker'
     dates = ['2021-02-16',
@@ -301,10 +301,13 @@ if run_section:
     finalfig.savefig(os.path.join(config.results_dir,'fits_online',f'onlineFitFigure_{mk_name}.pdf'))
     
 ## Offline tcFNN Training Variance
-run_section = False
+run_section = True
 if run_section:
     mk_name = 'Batman'
-    dates = ['2020-11-21', '2020-12-05','2020-12-08', '2020-12-23']
+    dates = ['2020-11-21',
+             '2020-12-08',
+             '2020-12-23',
+             '2021-04-14']
     genfig = 2
     fig = None
     axes = None
@@ -321,14 +324,8 @@ if run_section:
     # run the analysis for each day
     for i, date in enumerate(dates):
         gfig = i == genfig
-        if date == '2020-12-05':
-            train = True
-            calc = True
-        else:
-            train = False
-            calc = False
         #run variance offline analysis with standard datas
-        varfig, axs, metrics, hist, std_dev = variance_offline(mk_name, date, gfig, train_models=train, calculate_results=calc)
+        varfig, axs, metrics, hist, std_dev = variance_offline(mk_name, date, gfig, train_models=False, calculate_results=False)
         if gfig:
             axes = axs
             fig = varfig
@@ -336,8 +333,15 @@ if run_section:
         hists.append(hist)
         sds.append(std_dev)
 
+    results = pd.concat(results, keys=dates, names=['date', 'indayidx'], axis=0)
+    variance_offline_partII(mk_name, axes, results, hists, sds, normalize_data=False)
+    fig.savefig(os.path.join(config.results_dir, 'variance_offline', f'offline_variance_figure_{mk_name}_{dates[genfig]}.pdf'))
+
+    print('moving to norm')
+    for i, date in enumerate(dates):
+        gfig = i == genfig
         #run  variance offline analysis with normalized data
-        varfig, axs, metrics, hist, std_dev = variance_offline(mk_name, date, gfig, train_models=True, calculate_results=train, normalize_data=calc)
+        varfig, axs, metrics, hist, std_dev = variance_offline(mk_name, date, gfig, train_models=True, calculate_results=True, normalize_data=True)
         if gfig:
             axes_n = axs
             fig_n = varfig
@@ -346,10 +350,6 @@ if run_section:
         sds_n.append(std_dev)
 
     #concatenate all the metrics for each model (MSE, VAF, Corr, etc) and save
-    results = pd.concat(results, keys=dates, names=['date', 'indayidx'], axis=0)
     results_n = pd.concat(results_n, keys=dates, names=['date', 'indayidx'], axis=0)
-    variance_offline_partII(mk_name, axes, results, hists, sds, normalize_data=False)
     variance_offline_partII(mk_name, axes_n, results_n, hists_n, sds_n, normalize_data=True)
-
-    fig.savefig(os.path.join(config.results_dir, 'variance_offline', f'offline_variance_figure_{mk_name}_{dates[genfig]}.pdf'))
     fig_n.savefig(os.path.join(config.results_dir, 'variance_offline', f'offline_variance_NORM_figure_{mk_name}_{dates[genfig]}.pdf'))

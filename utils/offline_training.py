@@ -270,6 +270,7 @@ def fit(model, model_type, opt, scheduler, dl, val_dl, scaler_used=True, normali
 
     if normalized:
         max_epoch = training_params['max_epoch_norm']
+        print(max_epoch)
     else:
         max_epoch = training_params['max_epoch']
 
@@ -309,7 +310,7 @@ def fit(model, model_type, opt, scheduler, dl, val_dl, scaler_used=True, normali
                                               val_dl, 
                                               epoch,
                                               iter, 
-                                              training_params['max_epoch'],
+                                              max_epoch,
                                               scaler_used=scaler_used,
                                               verbose=False)
 

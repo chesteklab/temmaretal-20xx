@@ -215,6 +215,7 @@ def variance_offline_partII(mk_name, axs, metrics, history, std_dev, normalize_d
     sdd = []
     
     for i, key in enumerate(keys):
+        print(key)
         hist = np.vstack([histi[key] for histi in history])
         hist_mean = np.mean(hist, axis=0)
         hist_std = np.std(hist, axis=0)
