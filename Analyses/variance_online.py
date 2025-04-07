@@ -19,7 +19,7 @@ def variance_online(serverpath, mk_name, date, runs, decoderlabels,
             run = 'Run-{}'.format(str(runs[i]).zfill(3))
             fpath = os.path.join(serverpath, mk_name, date, run)
 
-            z = ZStructTranslator(fpath, numChans=96)
+            z = ZStructTranslator(fpath, os.path.join(config.data_dir, 'variance_online'), numChans=96)
             z = z.asdataframe()
             if decoderlabels[i] != 'HC': # if not a hand control run, filter by only decoder on trials.
                 z = z[z['ClosedLoop'] == True] #make sure decode is on as well

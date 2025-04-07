@@ -8,7 +8,6 @@ from matplotlib import font_manager
 import seaborn as sns
 import os
 #some basic text parameters for figures
-# plt.switch_backend('TkAgg')
 mpl.rcParams['font.family'] = "Atkinson Hyperlegible" # if installed but not showing up, rebuild mpl cache
 mpl.rcParams['font.size'] = 12
 mpl.rcParams['savefig.format'] = 'pdf'
@@ -24,24 +23,25 @@ mpl.rcParams['pdf.fonttype'] = 42
 
 # Sets up some parameters used throughout the project
 
-
 # set up standard plot colors
 hcColor = np.asarray([0.5, 0.5, 0.5])
 kfColor = np.asarray([64, 64, 192]) / 255
 dsColor = np.asarray([64, 192, 64]) / 255
 tcnColor = np.asarray([192, 64, 64]) / 255
 rnnColor = np.asarray([128, 0, 96]) / 255
+tcnColorB = np.asarray([192, 96, 192]) / 255
 
 noregColor = np.asarray([64, 192, 192]) / 255
 nobnColor = np.asarray([192, 64, 192]) / 255
 nodpColor = np.asarray([128, 128, 224]) / 255
 
 
-offline_palette = np.stack((kfColor, dsColor, tcnColor, rnnColor))
+offline_palette = np.stack((kfColor, dsColor, tcnColor, rnnColor, tcnColorB))
 offline_order = ('rr','ds','tcn','rnn')
 online_palette = np.stack((hcColor, kfColor, tcnColor, rnnColor))
-offlineVariancePalette = {'hc':hcColor, 'tcfnn':tcnColor, 'nodp':nodpColor,
-                          'nobn':nobnColor, 'noreg':noregColor}
+online_palette_w = np.stack((hcColor, kfColor, tcnColor, tcnColorB))
+offline_variance_palette = {'hc':hcColor, 'TCN':tcnColor, 'TCN_nodp':nodpColor,
+                          'TCN_nobn':nobnColor, 'TCN_noreg':noregColor}
 
 variance_models = ('TCN', 'TCN_nobn', 'TCN_nodp', 'TCN_noreg')
 varianceLabels = ('tcfnn', 'dropout only (noBN)', 'batchnorm only (noDP)', 'noReg')
@@ -68,20 +68,18 @@ binsize = 50
 numChans = 96
 batch_size = 64
 
-# get cwd for making the folders - so that all the data should generate/get saved into the right places
 # for linux
 server_dir = '/run/user/1000/gvfs/smb-share:server=cnpl-drmanhattan.engin.umich.edu,share=share'
 #for windows
-# server_dir = 'Z:\\'
+#server_dir = 'Z:\\'
 raw_data_dir = os.path.join(server_dir, 'Data/Monkeys')
 # raw_data_dir = 'Z:\Data\Monkeys'
-output_dir = os.path.join(server_dir, 'Student Folders/Hisham_Temmar/tcFNNPaper/Revision')
+output_dir = os.path.join(server_dir, 'Student Folders/Hisham_Temmar/tcFNNPaper/revision_wayne')
 model_dir = os.path.join(output_dir,'Models')
 results_dir = os.path.join(output_dir,'Results')
 data_dir = os.path.join(output_dir,'Data')
 architectures_path = os.path.join(os.getcwd(), 'network_architectures.yaml')
 training_params_path = os.path.join(os.getcwd(), 'training_params.yaml')
-
 
 device = torch.device('cuda:0')
 dtype = torch.float

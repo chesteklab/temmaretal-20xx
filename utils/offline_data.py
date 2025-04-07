@@ -121,7 +121,7 @@ def split_offline_data(data, numFolds):
         for feat in data.keys():
             fulldat = data[feat]
             #for each context and each feat, add the leave in group for this fold.
-            newdata[feat].append(fulldat[inidx, ...])
+            newdata[feat].append(fulldat[inidx.astype(int), ...])
 
     return newdata, inIDXList, outIDXList
 
@@ -133,7 +133,7 @@ def split_context_data(data, numFolds):
     :return:
     '''
     #given we truncated all the data, it should be all the same length.
-    n = len(data[config.contextOrder[0]]['vel'])
+    n = len(data[config.context_order[0]]['vel'])
     rng = np.random.default_rng()
     # get all the indices and shuffle them around.
     shuffled_idx = np.arange(n)
