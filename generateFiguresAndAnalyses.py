@@ -77,8 +77,7 @@ if run_section:
     for i, (date, run, dclabs, off2) in enumerate(zip(dates, runs, decoderlabels, offby2)):
         genfig = i == fignum
 
-        kldiv, ax, distaxs, fig, metrics = fits_online(mk_name, date, run, dclabs, offby2=off2,
-                                              preprocess=True)
+        kldiv, ax, distaxs, fig, metrics = fits_online(mk_name, date, run, dclabs, offby2=off2, preprocess=False)
         kldivs.append(kldiv)
 
         results.append(metrics)
@@ -174,7 +173,7 @@ if run_section:
 ## Context Shifting Offline
 run_section = False
 if run_section:
-    firstpart = True
+    firstpart = False
     if firstpart:
         results = []
         mk_name = 'Joker'
@@ -197,7 +196,7 @@ if run_section:
         flag = False
         for date, run, label in zip(dates, runs, labels):
             if date == '2023-04-07':
-                flag = True
+                flag = False
             metrics = context_offline(mk_name, date, run, label,
                                       preprocess=flag, train_rr=flag, train_tcn=flag, train_rnn=flag)
             results.append(metrics)
@@ -213,7 +212,7 @@ if run_section:
 
 # Monkey W
 ## Offline Fit of Velocity Distribution 
-run_section = False
+run_section = True
 if run_section:
     mk_name = 'Batman'
     dates = ['2020-11-21',
@@ -284,8 +283,7 @@ if run_section:
     for i, (date, run, dclabs, off2) in enumerate(zip(dates, runs, decoderlabels, offby2)):
         genfig = i == fignum
 
-        kldiv, ax, distaxs, fig, metrics = fits_online_w(mk_name, date, run, dclabs, offby2=off2,
-                                              preprocess=True, genfig=genfig)
+        kldiv, ax, distaxs, fig, metrics = fits_online_w(mk_name, date, run, dclabs, offby2=off2, preprocess=False, genfig=genfig)
         kldivs.append(kldiv)
 
         results.append(metrics)
@@ -341,7 +339,7 @@ if run_section:
     for i, date in enumerate(dates):
         gfig = i == genfig
         #run  variance offline analysis with normalized data
-        varfig, axs, metrics, hist, std_dev = variance_offline(mk_name, date, gfig, train_models=True, calculate_results=True, normalize_data=True)
+        varfig, axs, metrics, hist, std_dev = variance_offline(mk_name, date, gfig, train_models=False, calculate_results=False, normalize_data=True)
         if gfig:
             axes_n = axs
             fig_n = varfig

@@ -250,23 +250,11 @@ def variance_offline_partII(mk_name, axs, metrics, history, std_dev, normalize_d
 
     sns.barplot(ax=sd_ax, data=pd.DataFrame(average_std_dev), x='average sd', y='decoder', alpha=0.6,
                 palette=config.offline_variance_palette, hue_order=config.variance_models, order=keys)
-    """
-    sns.stripplot(data=sd_reformat_df, x='sd', y='decoder', hue_order=config.variance_models, order=keys,
-                  palette=config.offlineVariancePalette, jitter=True, ax=sd_ax, alpha=0.7, size=4, zorder=0)
-    """
+
     sd_ax.errorbar(x=average_std_dev['average sd'], y=average_std_dev['decoder'], color='black',
                    xerr=average_std_dev['se_median'], fmt='none', elinewidth=2, zorder=1)
-    
-    if mk_name == 'Joker':
-        sd_ax.set(title='D. Median Prediction Deviations', xlabel='Median inter-model prediction SD across time',
-                yticklabels=config.varianceTicks)#, xlim=(0,0.2))
-    elif mk_name == 'Batman':
-        if normalize_data:
-            sd_ax.set(title='D. Median Prediction Deviations', xlabel='Median inter-model prediction SD across time',
-                    yticklabels=config.varianceTicks)#, xlim=(0,0.3))
-        else:
-            sd_ax.set(title='D. Median Prediction Deviations', xlabel='Median inter-model prediction SD across time',
-                    yticklabels=config.varianceTicks)#, xlim=(0,0.25))
+    sd_ax.set(title='D. Median Prediction Deviations', xlabel='Median inter-model prediction SD across time',
+              yticklabels=config.varianceTicks, xticks=[0,0.05,0.1,0.15,0.2])
 
     sns.barplot(ax=mse_ax, data=metrics, y='decoder', x='mse', estimator='mean', errorbar='se', alpha=0.6, errcolor='black',
                 palette=config.offline_variance_palette, hue_order=config.variance_models, order=keys)
@@ -278,7 +266,7 @@ def variance_offline_partII(mk_name, axs, metrics, history, std_dev, normalize_d
     mse_summary = metrics.groupby('decoder').agg(('mean','std'))
 
     #do stats on mses, compare all to tcFNN
-    tcn_mses = metrics.groupby('decoder').get_group('TCN').reset_index()[['mse']]
+    tcn_mses = metrics.groupby('decoder').get_group('TCN').reset_index()['mse']
     msediffs = {'comparison':[],'diff':[],'pvalue':[], 'sd diff':[]}
     for label, group in metrics.groupby('decoder'):
         if label != 'TCN':
@@ -288,7 +276,7 @@ def variance_offline_partII(mk_name, axs, metrics, history, std_dev, normalize_d
         msediffs['comparison'].append(f'tcn v {label}')
         msediffs['diff'].append((tcn_mses.mean() - group_mses.mean())/tcn_mses.mean())
         msediffs['pvalue'].append(stats.ttest_ind(tcn_mses, group_mses, alternative='less'))
-
+        
         astd = pd.DataFrame(average_std_dev)
         tcnsd = astd.loc[astd['decoder'] == 'TCN', 'average sd'].to_numpy()[0]
         labelsd = astd.loc[astd['decoder'] == label, 'average sd'].to_numpy()[0]

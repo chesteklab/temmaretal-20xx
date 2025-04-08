@@ -310,15 +310,25 @@ def do_context_stats(metrics):
             comparisons['diff_pct'].append(diffpct)
             comparisons['p_value'].append(stats.ttest_ind(df1['mse'], df2['mse'], alternative='greater').pvalue)
 
-
+    #compare off context nns to on context rr
     df1 = grouped_mses.get_group(('rr','on'))
     df2 = grouped_mses.get_group(('tcn','off'))
+    df3 = grouped_mses.get_group(('rnn','off'))
     m1 = grouped_mses_means.loc[('rr','on'),'mean']
     m2 = grouped_mses_means.loc[('tcn','off'),'mean']
+    m3 = grouped_mses_means.loc[('rnn','off'),'mean']
 
     diff = m1 - m2
     diffpct = (m1-m2)/m1
     comparisons['comparison'].append(f'rr on > tcn off')
+    comparisons['diff'].append(diff)
+    comparisons['diff_pct'].append(diffpct)
+    comparisons['pct_relative_to'].append('rr on')
+    comparisons['p_value'].append(stats.ttest_ind(df1['mse'], df2['mse'], alternative='greater').pvalue)
+
+    diff = m1 - m3
+    diffpct = (m1-m3)/m1
+    comparisons['comparison'].append(f'rr on > rnn off')
     comparisons['diff'].append(diff)
     comparisons['diff_pct'].append(diffpct)
     comparisons['pct_relative_to'].append('rr on')
@@ -358,7 +368,7 @@ def make_context_figure(results, date):
     ## example traces of an on and off context prediction maybe?
     predictions = (rr_predictions, tcn_predictions, rnn_predictions)
     decoders = ('tcn', 'rnn', 'rr')
-    timeslice = slice(425,550)
+    timeslice = slice(450,515)
     truth = test_velocities['Normal'][timeslice,1]
     for i in range(3):
         on_example = predictions[i]['Normal']['Normal'][0][timeslice,1]
@@ -367,9 +377,10 @@ def make_context_figure(results, date):
         examples[i].plot(truth, 'k')
         examples[i].plot(on_example, color=config.context_palette[0,:])
         examples[i].plot(off_example, color=config.context_palette[3,:])
-        examples[i].set(yticks=[-2,0,2])
+        examples[i].set(yticks=[-3,0,3])
 
     examples[0].set(title='on vs. off context predictions', ylabel='vel')
+    examples[2].set(xlabel='Time (sec)', xlim=(0,60), xticks=(0,20,40,60), xticklabels=(0,1,2,3))
 
     results_date = results[results['date'] == date]
     order = ('rr','tcn','rnn')
@@ -383,7 +394,7 @@ def make_context_figure(results, date):
             
         sns.stripplot(res, x='test_context', y='mse', hue='train_context', 
                     hue_order=config.context_order, palette=config.context_palette,
-                    dodge=True, ax=bar_axs[i], alpha=0.7, zorder=1, size=5)
+                    dodge=True, ax=bar_axs[i], alpha=0.7, zorder=1, size=5, legend=False)
             
         # add arrows above on context
         xtick_loc = {v.get_text(): v.get_position()[0] for v in bar_axs[i].get_xticklabels()}
@@ -394,19 +405,22 @@ def make_context_figure(results, date):
             mask = (res['train_context'] == context) & (res['test_context'] == context)
             barwidth = width/len(config.context_order)
             onx[j] = xtick_loc[tickkey] - (width/2) + barwidth/2 + barwidth * j
-            ony[j] = res.loc[mask, 'mse'].mean() + 0.03
-        bar_axs[i].scatter(onx, ony, marker='v', c='k', s=20, alpha=0.5)
+            ony[j] = res.loc[mask, 'mse'].mean() + 0.07
+        bar_axs[i].scatter(onx, ony, marker='v', c='k', s=20, alpha=1)
         bar_axs[i].set_title(decoder)
         
         if i != 0:
             bar_axs[i].set(ylabel=None)
             bar_axs[i].get_legend().remove()
+        else:
+            handles, labels = bar_axs[i].get_legend_handles_labels()
+            plt.legend(handles[0:6], labels[0:6])
         bar_axs[i].set(title=decoder, xlabel='Test Context', ylabel='MSE')
 
     sns.barplot(results, x='decoder', y='mse', hue='on_off', hue_order=['on','off','mix','mix_full'],
                 ax=group_mses_ax, palette=config.context_group_palette, alpha=.7, errorbar='se', order=('rr','tcn','rnn'))
     sns.stripplot(results, x='decoder', y='mse', hue='on_off', hue_order=['on','off','mix','mix_full'],
-                ax=group_mses_ax, palette=config.context_group_palette, dodge=True, alpha=0.7, zorder=1, order=('rr','tcn','rnn'))
+                ax=group_mses_ax, palette=config.context_group_palette, dodge=True, alpha=0.7, zorder=1, order=('rr','tcn','rnn'), legend=False)
     group_mses_ax.set(title='grouped', xlabel=None, ylabel='MSE')
     
     context_fig.savefig(os.path.join(config.results_dir, 'context_offline', 'context_offlineFigure.pdf'))
