@@ -209,7 +209,7 @@ def fits_offline(mk_name, date, runs, preprocess=True, train_rr=True, train_ds=T
     decoders = ('rr','ds','tcn', 'rnn')
     preds = (rr_predictions, ds_predictions, nn_predictions, rnn_predictions)
     metrics = {'cc':[], 'mse':[], 'vaf':[],'mse_hi':[],'mse_lo':[],
-                  'mean_hi':[],'mean_lo':[],'kl_div':[], 'decoder':[], 'fold':[], 'kl_div_gaussian': []}
+                  'mean_hi':[],'mean_lo':[],'kl_div':[], 'decoder':[], 'fold':[]}
 
     with open(os.path.join(config.results_dir, 'fits_offline', f'predictions_all_models_{date}_{mk_name}.pkl'), 'wb') as f:
         pickle.dump((preds, vel_test), f)
@@ -233,7 +233,6 @@ def fits_offline(mk_name, date, runs, preprocess=True, train_rr=True, train_ds=T
             metrics['mean_lo'].append(np.mean(pred_lo))
             metrics['mse_hi'].append(offline_metrics.mse(pv_hi, pred_hi))
             metrics['mse_lo'].append(offline_metrics.mse(pv_lo, pred_lo))
-            metrics['kl_div_gaussian'].append(offline_metrics.kl_div_gaussian(prediction, binedges, binsize))
 
             #kl div will be duplicate for each trial - for now
             pv_hist, _ = np.histogram(truth, density=True, bins=binedges)
@@ -252,7 +251,7 @@ def fits_offline(mk_name, date, runs, preprocess=True, train_rr=True, train_ds=T
     klax = None
 
     if genfig:
-        dist_stats = {'decoder': [], 'shapiro_p': [], 'KS_p': [], 'anderson_sl': [], 'anderson_cv': [], 'anderson_stat': [], 'kl_div_gaussian': []}
+        dist_stats = {'decoder': [], 'shapiro_p': [], 'kl_div_gaussian': []}
 
         # Creating the Figure:
         fitFig = plt.figure(figsize=(20,8))
@@ -359,20 +358,15 @@ def fits_offline(mk_name, date, runs, preprocess=True, train_rr=True, train_ds=T
                 plotGauss(topax)
                 plotGauss(botax)
             
-            """
-            idx = np.random.randint(0, len(pred[:,:,:].flatten()), 300)
+            idx = np.random.randint(0, len(pred[:,:,:].flatten()), 5000) # sample 5000 points from the distribution, maximum for shapiro test
             dist_stats['shapiro_p'].append(stats.shapiro(pred[:,:,:].flatten()[idx])[1])
-            dist_stats['KS_p'].append(stats.kstest(pred[:,:,:].flatten(), 'norm', args=(pred[:,:,:].mean(), pred[:,:,:].std()))[1])
-            dist_stats['anderson_sl'].append(stats.anderson(pred[:,:,:].flatten(), dist='norm').significance_level[2])
-            dist_stats['anderson_cv'].append(stats.anderson(pred[:,:,:].flatten(), dist='norm').critical_values[2])
-            dist_stats['anderson_stat'].append(stats.anderson(pred[:,:,:].flatten(), dist='norm').statistic)
-
+            dist_stats['kl_div_gaussian'].append(offline_metrics.kl_div_gaussian(pred[:,:,:].flatten()[idx], binedges, binsize))
             dist_stats['decoder'].append(decoders[i])
-            """
+            
 
             utils.online_metrics.drawBrokenAxes(topax, botax, d=0.015)
-        #dist_stats = pd.DataFrame(dist_stats)
-        #dist_stats.to_csv(os.path.join(config.results_dir, 'fits_offline', f'dist_stats_{mk_name}.csv'))
+        dist_stats = pd.DataFrame(dist_stats)
+        dist_stats.to_csv(os.path.join(config.results_dir, 'fits_offline', f'normality_results_{mk_name}.csv'))
 
     metrics = pd.DataFrame(metrics)
 
@@ -420,19 +414,6 @@ def fits_offline_partII(mk_name, results, mseax, klax):
         offlineFitResults['diff_rr_rnn'].append(c)
         offlineFitResults['pval_rr_rnn'].append(f.pvalue)
 
-    klrrm = results.loc[results['decoder'] == 'rr', 'kl_div_gaussian'].droplevel('indayidx')
-    kltcnm = results.loc[results['decoder'] == 'tcn', 'kl_div_gaussian'].droplevel('indayidx')
-    kldsm = results.loc[results['decoder'] == 'ds', 'kl_div_gaussian'].droplevel('indayidx')
-    klrnnm = results.loc[results['decoder'] == 'rnn', 'kl_div_gaussian'].droplevel('indayidx')
-
-    rrklresult = stats.ttest_1samp(klrrm, 0)
-    tcnklresult = stats.ttest_1samp(kltcnm, 0)
-    dsklresult = stats.ttest_1samp(kldsm, 0)
-    rnnklresult = stats.ttest_1samp(klrnnm, 0)
-
-    normalityResults = {'decoder': ['rr', 'tcn', 'ds', 'rnn'],
-                        'pval': [rrklresult.pvalue, tcnklresult.pvalue, dsklresult.pvalue, rnnklresult.pvalue]}
-
     # Plot MSE over folds and over days
     sns.barplot(data=results, x='decoder', y='mse', palette=config.offline_palette,
                 ax=mseax, alpha=0.6, errorbar='se', legend=False)
@@ -449,8 +430,5 @@ def fits_offline_partII(mk_name, results, mseax, klax):
 
     offlineFitResults = pd.DataFrame(offlineFitResults, index=metricstotest)
     offlineFitResults.to_csv(os.path.join(config.results_dir, 'fits_offline', f'offlineFitResults_{mk_name}.csv'))
-
-    normalityResults = pd.DataFrame(normalityResults)
-    normalityResults.to_csv(os.path.join(config.results_dir, 'fits_offline', f'normality_results_{mk_name}.csv'))
 
     return
